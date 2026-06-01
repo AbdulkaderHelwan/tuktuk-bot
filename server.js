@@ -319,18 +319,18 @@ async function handleAccept(driverPhone, driverName, req) {
   const riderTrackUrl = `${base}/track/${rideId}?role=rider`;
   const driverTrackUrl = `${base}/track/${rideId}?role=driver`;
 
-  // Tell the rider
+  // Tell the rider — tracking link opens inside WhatsApp, no separate browser
   await sendText(ride.riderPhone,
-    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}${etaText}\n\n📍 Your driver will share their *live location* with you so you can track them on the map — right here in WhatsApp.\n\nMessage them: wa.me/${driverPhone}\n\nSend "cancel" to cancel or "done" when you arrive.`
+    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}${etaText}\n\n📍 *Track your tuk-tuk live — tap here:*\n${riderTrackUrl}\n\nContact driver: wa.me/${driverPhone}\n\nSend "cancel" to cancel or "done" when you arrive.`
   );
 
-  // Tell the driver — instruct to share live location with rider
+  // Tell the driver — one tap starts GPS sharing automatically + send pickup pin for navigation
   await sendText(driverPhone,
-    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\n\n👉 *Open the chat with the rider and share your live location:*\nwa.me/${ride.riderPhone}\n\nThen tap 📎 → Location → *Share live location* (1 hour).\nThis way they can see you coming!\n\nSend "done" when the ride is complete.`
+    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\n\n📍 *Tap to start — shares your location with the rider automatically:*\n${driverTrackUrl}\n\nSend "done" when the ride is complete.`
   );
 
-  // Send the rider's pickup location as a tappable pin — driver taps it to open Maps/Waze
-  await sendLocation(driverPhone, ride.riderLocation.lat, ride.riderLocation.lng, `📍 ${ride.riderName}'s pickup`, "Tap to navigate");
+  // Send the rider's pickup location as a tappable pin — driver taps to open Maps/Waze
+  await sendLocation(driverPhone, ride.riderLocation.lat, ride.riderLocation.lng, `📍 ${ride.riderName}'s pickup`, "Tap for directions");
 
   // Tell other drivers it's taken
   for (const otherPhone of ride.pingedDrivers) {
