@@ -18,12 +18,40 @@ const {
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
+// ---- Startup diagnostics — prints what the bot is actually using ----
+async function checkConfig() {
+  const tokenPreview = WHATSAPP_TOKEN
+    ? `${WHATSAPP_TOKEN.slice(0, 6)}...${WHATSAPP_TOKEN.slice(-4)} (${WHATSAPP_TOKEN.length} chars)`
+    : "MISSING!";
+  console.log(`== DIAGNOSTICS ==`);
+  console.log(`PHONE_NUMBER_ID: ${PHONE_NUMBER_ID || "MISSING!"}`);
+  console.log(`WHATSAPP_TOKEN:  ${tokenPreview}`);
+  console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
+
+  // Test the token by asking Meta for the phone number info
+  try {
+    const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}`, {
+      headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
+    });
+    const data = await res.json();
+    if (data.error) {
+      console.log(`TOKEN TEST FAILED: ${JSON.stringify(data.error)}`);
+    } else {
+      console.log(`TOKEN TEST PASSED — phone: ${data.display_phone_number}, verified: ${data.verified_name}`);
+    }
+  } catch (e) {
+    console.log(`TOKEN TEST ERROR: ${e.message}`);
+  }
+  console.log(`=================`);
+}
+
 // ---- Super-simple in-memory store. Resets on restart. Swap for Redis/Postgres later. ----
 const drivers = new Map(); // phone -> { phone, name, online, location:{lat,lng} }
 
 // ---- Send a WhatsApp text message ----
 async function sendText(to, body) {
-  const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/messages`, {
+  const url = `${GRAPH}/${PHONE_NUMBER_ID}/messages`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${WHATSAPP_TOKEN}`,
@@ -36,7 +64,14 @@ async function sendText(to, body) {
       text: { body },
     }),
   });
-  if (!res.ok) console.error("send failed:", await res.text());
+  if (!res.ok) {
+    const errBody = await res.text();
+    console.error(`send failed to ${to}: ${errBody}`);
+    console.error(`  URL was: ${url}`);
+    console.error(`  Token starts with: ${WHATSAPP_TOKEN?.slice(0, 6)}`);
+  } else {
+    console.log(`message sent to ${to}`);
+  }
 }
 
 // ---- Webhook verification (Meta calls this once when you connect the webhook) ----
@@ -58,6 +93,7 @@ app.post("/webhook", async (req, res) => {
 
     const from = msg.from; // sender's phone, e.g. "9617xxxxxxx"
     const name = value?.contacts?.[0]?.profile?.name || "there";
+    console.log(`Incoming ${msg.type} from ${from} (${name})`);
 
     if (msg.type === "location") {
       await handleLocation(from, name, {
@@ -127,4 +163,7 @@ async function handleLocation(from, name, loc) {
   }
 }
 
-app.listen(PORT, () => console.log(`Tuk-tuk bot listening on :${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Tuk-tuk bot listening on :${PORT}`);
+  checkConfig();
+});
