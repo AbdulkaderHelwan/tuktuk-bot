@@ -93,6 +93,29 @@ async function sendText(to, body) {
   }
 }
 
+// ---- Send a WhatsApp location pin (tappable — opens Maps for navigation) ----
+async function sendLocation(to, lat, lng, name, address) {
+  const url = `${GRAPH}/${PHONE_NUMBER_ID}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${WHATSAPP_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "location",
+      location: { latitude: lat, longitude: lng, name: name || "Location", address: address || "" },
+    }),
+  });
+  if (!res.ok) {
+    console.error(`location send failed to ${to}: ${await res.text()}`);
+  } else {
+    console.log(`location sent to ${to}`);
+  }
+}
+
 // ================= WEBHOOK =================
 
 app.get("/webhook", (req, res) => {
@@ -296,15 +319,18 @@ async function handleAccept(driverPhone, driverName, req) {
   const riderTrackUrl = `${base}/track/${rideId}?role=rider`;
   const driverTrackUrl = `${base}/track/${rideId}?role=driver`;
 
-  // Tell the rider — with tracking link
+  // Tell the rider
   await sendText(ride.riderPhone,
-    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}${etaText}\n\n📍 *Track your tuk-tuk live:*\n${riderTrackUrl}\n\nOr contact them: wa.me/${driverPhone}\n\nSend "cancel" to cancel or "done" when you arrive.`
+    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}${etaText}\n\n📍 Your driver will share their *live location* with you so you can track them on the map — right here in WhatsApp.\n\nMessage them: wa.me/${driverPhone}\n\nSend "cancel" to cancel or "done" when you arrive.`
   );
 
-  // Tell the driver — with tracking link (shares their GPS with rider)
+  // Tell the driver — instruct to share live location with rider
   await sendText(driverPhone,
-    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\n\n📍 *Open to navigate — this shares your location with the rider:*\n${driverTrackUrl}\n\nOr contact rider: wa.me/${ride.riderPhone}\n\nSend "done" when the ride is complete.`
+    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\n\n👉 *Open the chat with the rider and share your live location:*\nwa.me/${ride.riderPhone}\n\nThen tap 📎 → Location → *Share live location* (1 hour).\nThis way they can see you coming!\n\nSend "done" when the ride is complete.`
   );
+
+  // Send the rider's pickup location as a tappable pin — driver taps it to open Maps/Waze
+  await sendLocation(driverPhone, ride.riderLocation.lat, ride.riderLocation.lng, `📍 ${ride.riderName}'s pickup`, "Tap to navigate");
 
   // Tell other drivers it's taken
   for (const otherPhone of ride.pingedDrivers) {
