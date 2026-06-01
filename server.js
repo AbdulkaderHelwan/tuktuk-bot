@@ -237,18 +237,29 @@ async function handleAccept(driverPhone, driverName) {
   const distKm = driver?.location
     ? require("./matching").distanceKm(ride.riderLocation, driver.location)
     : null;
-  const distText = distKm !== null ? `~${distKm.toFixed(1)} km away` : "";
+
+  // Estimate arrival time: ~20 km/h average tuk-tuk speed in urban traffic,
+  // multiply straight-line distance by 1.4 to approximate road distance.
+  let etaText = "";
+  let distText = "";
+  if (distKm !== null) {
+    distText = `~${distKm.toFixed(1)} km away`;
+    const etaMinutes = Math.max(1, Math.round((distKm * 1.4) / 20 * 60));
+    etaText = etaMinutes <= 2
+      ? `\n⏱ Estimated arrival: *~2 minutes*`
+      : `\n⏱ Estimated arrival: *~${etaMinutes} minutes*`;
+  }
 
   // Tell the rider
   await sendText(
     ride.riderPhone,
-    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}\nContact them: wa.me/${driverPhone}\n\nThey're on the way!`
+    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}${etaText}\nContact them: wa.me/${driverPhone}\n\nThey're on the way!`
   );
 
-  // Confirm to the driver
+  // Confirm to the driver (include ETA so they know the expectation too)
   await sendText(
     driverPhone,
-    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName}\nContact: wa.me/${ride.riderPhone}\n\nHead to their location. Safe driving!`
+    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\nContact: wa.me/${ride.riderPhone}\n\nHead to their location. Safe driving!`
   );
 
   // Tell the other pinged drivers the ride is taken
