@@ -8,13 +8,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #fff; overflow: hidden; height: 100vh; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #fff; overflow: hidden; height: 100vh; height: 100dvh; }
 
   #header {
     position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
     background: linear-gradient(135deg, #f2994a, #f2c94c);
-    padding: 12px 16px;
-    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
     box-shadow: 0 2px 12px rgba(0,0,0,0.2);
   }
   #header .logo { font-size: 24px; }
@@ -23,75 +22,69 @@
 
   #map { position: fixed; top: 56px; bottom: 0; left: 0; right: 0; z-index: 1; }
 
+  /* ---- Rider info card ---- */
   #info-card {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
-    background: #fff; color: #333;
-    border-radius: 20px 20px 0 0;
-    padding: 20px 20px 28px;
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
-    transition: transform 0.3s ease;
+    background: #fff; color: #333; border-radius: 20px 20px 0 0;
+    padding: 16px 20px 24px; box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
   }
-  .card-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 16px; }
-
-  .driver-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-  .driver-avatar { width: 48px; height: 48px; background: linear-gradient(135deg, #f2994a, #f2c94c); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; }
+  .card-handle { width: 40px; height: 4px; background: #ddd; border-radius: 2px; margin: 0 auto 14px; }
+  .driver-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .driver-avatar { width: 44px; height: 44px; background: linear-gradient(135deg, #f2994a, #f2c94c); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; }
   .driver-name { font-weight: 700; font-size: 16px; color: #1a1a2e; }
   .driver-status { font-size: 13px; color: #666; }
-
-  .eta-row { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; border-radius: 12px; padding: 14px 16px; }
+  .eta-row { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; border-radius: 12px; padding: 12px 16px; }
   .eta-big { font-size: 28px; font-weight: 800; color: #f2994a; }
-  .eta-label { font-size: 12px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
-  .eta-unit { font-size: 13px; color: #666; font-weight: 500; }
+  .eta-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 1px; }
+  .eta-unit { font-size: 13px; color: #666; }
   .distance-text { font-size: 14px; color: #666; font-weight: 500; }
-
-  .arrived-banner {
-    display: none;
-    background: linear-gradient(135deg, #27ae60, #2ecc71);
-    color: #fff; text-align: center; padding: 16px;
-    border-radius: 12px; margin-top: 12px;
-    font-size: 18px; font-weight: 700;
-    animation: celebrate 0.5s ease;
-  }
+  .arrived-banner { display: none; background: linear-gradient(135deg, #27ae60, #2ecc71); color: #fff; text-align: center; padding: 14px; border-radius: 12px; margin-top: 10px; font-size: 18px; font-weight: 700; animation: pop 0.4s ease; }
   .arrived-banner.show { display: block; }
+  @keyframes pop { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 
-  @keyframes celebrate { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
-
-  /* Pulsing pickup marker */
-  .pickup-pulse {
-    width: 20px; height: 20px; background: #27ae60; border: 3px solid #fff;
-    border-radius: 50%; box-shadow: 0 0 0 rgba(39, 174, 96, 0.4);
-    animation: pulse 2s infinite;
+  /* ---- Driver start screen (one big button) ---- */
+  #driver-start {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 32px;
+    text-align: center;
   }
-  @keyframes pulse {
-    0% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.5); }
-    70% { box-shadow: 0 0 0 15px rgba(39, 174, 96, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0); }
+  #driver-start.show { display: flex; }
+  #driver-start .emoji { font-size: 64px; }
+  #driver-start .heading { font-size: 22px; font-weight: 700; color: #f2c94c; }
+  #driver-start .desc { font-size: 14px; color: #a0a0b0; line-height: 1.5; max-width: 280px; }
+  #start-btn {
+    background: linear-gradient(135deg, #f2994a, #f2c94c); color: #1a1a2e;
+    border: none; border-radius: 16px; padding: 18px 48px; font-size: 18px; font-weight: 800;
+    cursor: pointer; box-shadow: 0 4px 20px rgba(242, 153, 74, 0.4);
+    transition: transform 0.15s ease;
   }
+  #start-btn:active { transform: scale(0.95); }
 
-  /* Tuk-tuk driver marker */
-  .tuktuk-marker { font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); transition: transform 0.5s ease; }
-
-  /* Driver mode banner */
+  /* ---- Driver active banner ---- */
   #driver-banner {
-    display: none; position: fixed; top: 56px; left: 0; right: 0; z-index: 999;
+    display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000;
     background: #2d3436; color: #dfe6e9; text-align: center;
-    padding: 10px; font-size: 13px;
+    padding: 16px; font-size: 14px; border-radius: 20px 20px 0 0;
   }
   #driver-banner.show { display: block; }
+  #driver-banner .status-dot { display: inline-block; width: 10px; height: 10px; background: #27ae60; border-radius: 50%; margin-right: 6px; animation: blink 1.5s infinite; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-  /* Loading state */
-  #loading {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 2000;
-    background: #1a1a2e; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 16px;
-  }
+  /* Markers */
+  .pickup-pulse { width: 20px; height: 20px; background: #27ae60; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 rgba(39,174,96,0.4); animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(39,174,96,0.5); } 70% { box-shadow: 0 0 0 15px rgba(39,174,96,0); } 100% { box-shadow: 0 0 0 0 rgba(39,174,96,0); } }
+  .tuktuk-marker { font-size: 32px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+
+  /* Loading */
+  #loading { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 3000; background: #1a1a2e; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; }
   #loading .spinner { font-size: 48px; animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #loading .text { color: #f2c94c; font-size: 16px; }
   #loading.hidden { display: none; }
 
-  /* Error state */
-  #error { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 2000; background: #fff; color: #333; padding: 24px; border-radius: 16px; text-align: center; max-width: 300px; }
+  /* Error */
+  #error { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3000; background: #fff; color: #333; padding: 24px; border-radius: 16px; text-align: center; max-width: 300px; }
   #error.show { display: block; }
 </style>
 </head>
@@ -108,6 +101,14 @@
   <div style="color: #666; font-size: 14px;">This ride may have ended or the link is invalid.</div>
 </div>
 
+<!-- Driver sees this first: one big button to start -->
+<div id="driver-start">
+  <div class="emoji">🛺</div>
+  <div class="heading">Ready to go?</div>
+  <div class="desc">Tap the button below to start sharing your location with the rider. They'll see you moving on the map in real time.</div>
+  <button id="start-btn" onclick="startDriver()">Start Driving</button>
+</div>
+
 <div id="header">
   <div class="logo">🛺</div>
   <div>
@@ -119,7 +120,7 @@
 <div id="map"></div>
 
 <div id="driver-banner">
-  📍 Sharing your location with the rider — drive to the green pin!
+  <span class="status-dot"></span> Sharing your location — drive to the green pin!
 </div>
 
 <div id="info-card">
@@ -151,23 +152,16 @@ const pathParts = window.location.pathname.split('/');
 const rideId = pathParts[pathParts.length - 1];
 
 let map, driverMarker, pickupMarker, routeLine;
-let driverLatLng = null;
-let riderLatLng = null;
+let driverLatLng = null, riderLatLng = null;
 
-// Haversine
 function distKm(a, b) {
   const R = 6371, toR = d => d * Math.PI / 180;
-  const dLat = toR(b[0] - a[0]), dLng = toR(b[1] - a[1]);
+  const dLat = toR(b[0]-a[0]), dLng = toR(b[1]-a[1]);
   const h = Math.sin(dLat/2)**2 + Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLng/2)**2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function etaMinutes(km) {
-  return Math.max(1, Math.round((km * 1.4) / 20 * 60));
-}
-
 async function init() {
-  // Fetch initial ride data
   let data;
   try {
     const res = await fetch(`/api/track/${rideId}/status`);
@@ -180,79 +174,75 @@ async function init() {
   }
 
   riderLatLng = [data.riderLocation.lat, data.riderLocation.lng];
-  if (data.driverLocation) {
-    driverLatLng = [data.driverLocation.lat, data.driverLocation.lng];
-  }
+  if (data.driverLocation) driverLatLng = [data.driverLocation.lat, data.driverLocation.lng];
 
   document.getElementById('driver-name').textContent = data.driverName || 'Your Driver';
   document.getElementById('loading').classList.add('hidden');
 
-  // Init map
-  const center = driverLatLng || riderLatLng;
-  map = L.map('map', { zoomControl: false, attributionControl: false }).setView(center, 15);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-  }).addTo(map);
-
-  // Pickup marker (green pulsing)
-  const pickupIcon = L.divIcon({
-    className: '',
-    html: '<div class="pickup-pulse"></div>',
-    iconSize: [20, 20],
-    iconAnchor: [10, 10],
-  });
-  pickupMarker = L.marker(riderLatLng, { icon: pickupIcon }).addTo(map)
-    .bindTooltip('📍 Pickup', { permanent: true, direction: 'top', offset: [0, -12], className: 'pickup-tooltip' });
-
-  // Driver marker (tuk-tuk emoji)
-  const tuktukIcon = L.divIcon({
-    className: '',
-    html: '<div class="tuktuk-marker">🛺</div>',
-    iconSize: [32, 32],
-    iconAnchor: [16, 16],
-  });
-  if (driverLatLng) {
-    driverMarker = L.marker(driverLatLng, { icon: tuktukIcon }).addTo(map);
-    routeLine = L.polyline([driverLatLng, riderLatLng], { color: '#f2994a', weight: 3, dashArray: '8, 8', opacity: 0.7 }).addTo(map);
-    map.fitBounds([driverLatLng, riderLatLng], { padding: [60, 60] });
-    updateInfoCard();
-  }
-
-  // Driver mode: share GPS automatically
   if (role === 'driver') {
+    // Driver: show the big "Start Driving" button first
     document.getElementById('info-card').style.display = 'none';
-    document.getElementById('driver-banner').classList.add('show');
-    document.getElementById('header-status').textContent = 'Sharing your location';
-    startDriverTracking();
+    document.getElementById('driver-start').classList.add('show');
+    document.getElementById('header-status').textContent = 'Tap to start';
   } else {
+    // Rider: go straight to the map
     document.getElementById('header-status').textContent = 'Tracking your driver';
+    initMap();
     startRiderPolling();
   }
 }
 
-// Driver: share GPS via browser geolocation
-function startDriverTracking() {
+function initMap() {
+  const center = driverLatLng || riderLatLng;
+  map = L.map('map', { zoomControl: false, attributionControl: false }).setView(center, 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+  // Pickup pin
+  const pickupIcon = L.divIcon({ className: '', html: '<div class="pickup-pulse"></div>', iconSize: [20,20], iconAnchor: [10,10] });
+  pickupMarker = L.marker(riderLatLng, { icon: pickupIcon }).addTo(map)
+    .bindTooltip('📍 Pickup', { permanent: true, direction: 'top', offset: [0,-12] });
+
+  // Driver marker
+  if (driverLatLng) {
+    const icon = L.divIcon({ className: '', html: '<div class="tuktuk-marker">🛺</div>', iconSize: [32,32], iconAnchor: [16,16] });
+    driverMarker = L.marker(driverLatLng, { icon }).addTo(map);
+    routeLine = L.polyline([driverLatLng, riderLatLng], { color: '#f2994a', weight: 3, dashArray: '8, 8', opacity: 0.7 }).addTo(map);
+    map.fitBounds([driverLatLng, riderLatLng], { padding: [60, 60] });
+    updateInfoCard();
+  }
+}
+
+// Driver taps "Start Driving" → request GPS, init map, start sharing
+function startDriver() {
   if (!navigator.geolocation) {
-    alert('Geolocation not supported on this device.');
+    alert('GPS is not available on this device.');
     return;
   }
+
+  document.getElementById('driver-start').classList.remove('show');
+  document.getElementById('driver-banner').classList.add('show');
+  document.getElementById('header-status').textContent = 'Sharing location';
+  initMap();
+
   navigator.geolocation.watchPosition(
     async (pos) => {
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+      const lat = pos.coords.latitude, lng = pos.coords.longitude;
       driverLatLng = [lat, lng];
 
-      // Update own marker
-      if (driverMarker) {
-        driverMarker.setLatLng(driverLatLng);
-      } else {
+      if (driverMarker) { driverMarker.setLatLng(driverLatLng); }
+      else {
         const icon = L.divIcon({ className: '', html: '<div class="tuktuk-marker">🛺</div>', iconSize: [32,32], iconAnchor: [16,16] });
         driverMarker = L.marker(driverLatLng, { icon }).addTo(map);
       }
       if (routeLine) routeLine.setLatLngs([driverLatLng, riderLatLng]);
       else routeLine = L.polyline([driverLatLng, riderLatLng], { color: '#f2994a', weight: 3, dashArray: '8, 8', opacity: 0.7 }).addTo(map);
 
-      // Send to server
+      // Check if arrived
+      const km = distKm(driverLatLng, riderLatLng);
+      if (km < 0.1) {
+        document.getElementById('driver-banner').innerHTML = '🎉 You\'ve arrived at the pickup!';
+      }
+
       try {
         await fetch(`/api/track/${rideId}/location`, {
           method: 'POST',
@@ -262,54 +252,49 @@ function startDriverTracking() {
       } catch (e) { /* silent */ }
     },
     (err) => {
-      console.error('Geolocation error:', err);
-      document.getElementById('driver-banner').textContent = '⚠️ Location access denied — please enable GPS.';
+      document.getElementById('driver-banner').innerHTML = '⚠️ GPS access denied — please allow location access and try again.';
+      console.error('Geo error:', err);
     },
-    { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+    { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
   );
 }
 
-// Rider: poll for driver location
+// Rider polls every 3 seconds
 function startRiderPolling() {
   setInterval(async () => {
     try {
       const res = await fetch(`/api/track/${rideId}/status`);
       const data = await res.json();
-      if (data.error || data.status === 'cancelled') return;
+      if (data.error || data.status === 'cancelled' || data.status === 'completed') return;
+      if (!data.driverLocation) return;
 
-      if (data.driverLocation) {
-        driverLatLng = [data.driverLocation.lat, data.driverLocation.lng];
-        if (driverMarker) {
-          driverMarker.setLatLng(driverLatLng);
-        } else {
-          const icon = L.divIcon({ className: '', html: '<div class="tuktuk-marker">🛺</div>', iconSize: [32,32], iconAnchor: [16,16] });
-          driverMarker = L.marker(driverLatLng, { icon }).addTo(map);
-        }
-        if (routeLine) routeLine.setLatLngs([driverLatLng, riderLatLng]);
-        else routeLine = L.polyline([driverLatLng, riderLatLng], { color: '#f2994a', weight: 3, dashArray: '8, 8', opacity: 0.7 }).addTo(map);
-
-        updateInfoCard();
+      driverLatLng = [data.driverLocation.lat, data.driverLocation.lng];
+      if (driverMarker) { driverMarker.setLatLng(driverLatLng); }
+      else {
+        const icon = L.divIcon({ className: '', html: '<div class="tuktuk-marker">🛺</div>', iconSize: [32,32], iconAnchor: [16,16] });
+        driverMarker = L.marker(driverLatLng, { icon }).addTo(map);
+        map.fitBounds([driverLatLng, riderLatLng], { padding: [60, 60] });
       }
+      if (routeLine) routeLine.setLatLngs([driverLatLng, riderLatLng]);
+      else routeLine = L.polyline([driverLatLng, riderLatLng], { color: '#f2994a', weight: 3, dashArray: '8, 8', opacity: 0.7 }).addTo(map);
+      updateInfoCard();
     } catch (e) { /* silent */ }
-  }, 3000); // poll every 3 seconds
+  }, 3000);
 }
 
 function updateInfoCard() {
   if (!driverLatLng || !riderLatLng) return;
-
   const km = distKm(driverLatLng, riderLatLng);
-  const eta = etaMinutes(km);
+  const eta = Math.max(1, Math.round((km * 1.4) / 20 * 60));
   const meters = Math.round(km * 1000);
 
   document.getElementById('eta-minutes').textContent = eta;
-  document.getElementById('distance-text').textContent = meters < 1000
-    ? `${meters} m`
-    : `${km.toFixed(1)} km`;
+  document.getElementById('distance-text').textContent = meters < 1000 ? `${meters} m` : `${km.toFixed(1)} km`;
 
   if (meters < 100) {
     document.getElementById('arrived-banner').classList.add('show');
     document.getElementById('driver-status').textContent = 'Has arrived!';
-    document.getElementById('header-status').textContent = 'Driver arrived!';
+    document.getElementById('header-status').textContent = 'Driver arrived! 🎉';
     document.getElementById('eta-minutes').textContent = '0';
   } else if (eta <= 2) {
     document.getElementById('driver-status').textContent = 'Almost there!';
