@@ -1,24 +1,36 @@
-// server.js — WhatsApp tuk-tuk bot with broadcast-and-accept ride matching.
+// server.js — WhatsApp tuk-tuk bot with broadcast-accept matching + live tracking map.
 // Flow:
-//   Driver: sends "online" → shares location → becomes visible. "offline" to stop.
-//   Rider:  shares location → bot pings nearest drivers → first to ACCEPT wins →
-//           rider gets driver info, driver gets rider info, others told "ride taken".
+//   Driver: "online" → shares location → visible. "offline" to stop.
+//   Rider:  shares location → nearest drivers pinged → first to ACCEPT wins →
+//           both get a live tracking map link → rider watches tuk-tuk approach in real time.
 
 const express = require("express");
-const { findNearbyDrivers } = require("./matching");
+const crypto = require("crypto");
+const path = require("path");
+const { findNearbyDrivers, distanceKm } = require("./matching");
 
 const app = express();
 app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
 const {
   WHATSAPP_TOKEN,
   PHONE_NUMBER_ID,
   VERIFY_TOKEN,
   PORT = 3000,
+  BASE_URL = "",  // e.g. https://tuktuk-bot-1.onrender.com — auto-detected if empty
 } = process.env;
 
 const GRAPH = "https://graph.facebook.com/v21.0";
-const RIDE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes to accept before ride expires
+const RIDE_TIMEOUT_MS = 3 * 60 * 1000; // 3 min to accept
+
+// ---- State stores (in-memory — swap for Redis/Postgres later) ----
+const drivers = new Map();        // phone -> { phone, name, online, location }
+const rides = new Map();          // rideId -> { id, riderPhone, riderName, riderLocation, status, pingedDrivers, acceptedBy, driverName, driverLocation, timer, lastUpdate }
+const pendingOffers = new Map();  // driverPhone -> rideId
+const activeDriverRide = new Map(); // driverPhone -> rideId (for accepted rides, to update location)
+
+let detectedBaseUrl = "";
 
 // ---- Startup diagnostics ----
 async function checkConfig() {
@@ -29,6 +41,7 @@ async function checkConfig() {
   console.log(`PHONE_NUMBER_ID: ${PHONE_NUMBER_ID || "MISSING!"}`);
   console.log(`WHATSAPP_TOKEN:  ${tokenPreview}`);
   console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
+  console.log(`BASE_URL:        ${BASE_URL || "(will auto-detect from first request)"}`);
   try {
     const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}`, {
       headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
@@ -45,12 +58,17 @@ async function checkConfig() {
   console.log(`=================`);
 }
 
-// ---- State stores (in-memory — swap for Redis/Postgres later) ----
-const drivers = new Map();       // phone -> { phone, name, online, location }
-const rides = new Map();         // rideId -> { id, riderPhone, riderName, riderLocation, status, pingedDrivers, acceptedBy, timer }
-const pendingOffers = new Map(); // driverPhone -> rideId (reverse lookup: which ride was this driver pinged for?)
+// ---- Helpers ----
+function getBaseUrl(req) {
+  if (BASE_URL) return BASE_URL;
+  if (detectedBaseUrl) return detectedBaseUrl;
+  detectedBaseUrl = `${req.protocol}://${req.get("host")}`;
+  return detectedBaseUrl;
+}
 
-let rideCounter = 0;
+function generateRideId() {
+  return "ride_" + crypto.randomBytes(6).toString("hex");
+}
 
 // ---- Send a WhatsApp text message ----
 async function sendText(to, body) {
@@ -65,18 +83,18 @@ async function sendText(to, body) {
       messaging_product: "whatsapp",
       to,
       type: "text",
-      text: { body },
+      text: { preview_url: true, body },
     }),
   });
   if (!res.ok) {
-    const errBody = await res.text();
-    console.error(`send failed to ${to}: ${errBody}`);
+    console.error(`send failed to ${to}: ${await res.text()}`);
   } else {
     console.log(`message sent to ${to}`);
   }
 }
 
-// ---- Webhook verification ----
+// ================= WEBHOOK =================
+
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
   const token = req.query["hub.verify_token"];
@@ -85,7 +103,6 @@ app.get("/webhook", (req, res) => {
   return res.sendStatus(403);
 });
 
-// ---- Incoming messages ----
 app.post("/webhook", async (req, res) => {
   res.sendStatus(200);
   try {
@@ -98,88 +115,116 @@ app.post("/webhook", async (req, res) => {
     console.log(`Incoming ${msg.type} from ${from} (${name})`);
 
     if (msg.type === "location") {
-      await handleLocation(from, name, {
-        lat: msg.location.latitude,
-        lng: msg.location.longitude,
-      });
+      await handleLocation(from, name, { lat: msg.location.latitude, lng: msg.location.longitude }, req);
     } else if (msg.type === "text") {
-      await handleText(from, name, msg.text.body.trim().toLowerCase());
+      await handleText(from, name, msg.text.body.trim().toLowerCase(), req);
     }
   } catch (e) {
     console.error("handler error:", e);
   }
 });
 
-// ---- Text message handler ----
-async function handleText(from, name, text) {
-  // Driver goes online
+// ================= TRACKING API =================
+
+// Serve tracking page
+app.get("/track/:rideId", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "tracking.html"));
+});
+
+// Driver's browser posts GPS updates
+app.post("/api/track/:rideId/location", (req, res) => {
+  const ride = rides.get(req.params.rideId);
+  if (!ride || ride.status !== "accepted") return res.json({ error: "ride not active" });
+
+  const { lat, lng } = req.body;
+  ride.driverLocation = { lat, lng };
+  ride.lastUpdate = Date.now();
+
+  // Also update the driver's location in the drivers store
+  if (ride.acceptedBy) {
+    const driver = drivers.get(ride.acceptedBy);
+    if (driver) driver.location = { lat, lng };
+  }
+
+  res.json({ ok: true });
+});
+
+// Rider's browser polls for driver location
+app.get("/api/track/:rideId/status", (req, res) => {
+  const ride = rides.get(req.params.rideId);
+  if (!ride) return res.json({ error: "ride not found" });
+  res.json({
+    driverLocation: ride.driverLocation || null,
+    riderLocation: ride.riderLocation,
+    driverName: ride.driverName || "Your Driver",
+    status: ride.status,
+    lastUpdate: ride.lastUpdate || null,
+  });
+});
+
+// ================= MESSAGE HANDLERS =================
+
+async function handleText(from, name, text, req) {
   if (["driver", "online", "سائق"].includes(text)) {
-    // Clean up any pending ride offer this driver had
     cleanupDriverOffer(from);
     drivers.set(from, { phone: from, name, online: true, location: null });
-    return sendText(
-      from,
+    return sendText(from,
       `Hi ${name}! You're set as a tuk-tuk driver. 📍 Now share your *current location* (📎 → Location) so nearby riders can find you.\n\nSend "offline" anytime to stop.`
     );
   }
-
-  // Driver goes offline
   if (text === "offline") {
     const d = drivers.get(from);
     if (d) d.online = false;
     cleanupDriverOffer(from);
     return sendText(from, `You're now offline. Send "online" when you're driving again.`);
   }
-
-  // Driver accepts a ride
   if (["accept", "yes", "نعم", "ok", "y"].includes(text)) {
-    return handleAccept(from, name);
+    return handleAccept(from, name, req);
   }
-
-  // Driver rejects a ride
   if (["reject", "no", "لا", "n", "pass"].includes(text)) {
     return handleReject(from, name);
   }
-
-  // Rider asks for a ride
   if (["ride", "taxi", "tuktuk", "تكتك"].includes(text)) {
     return sendText(from, `🛺 Share your *location* (📎 → Location) and I'll find you a tuk-tuk.`);
   }
-
-  // Rider wants to cancel
   if (text === "cancel") {
     return handleCancel(from);
   }
-
-  // Default help
-  return sendText(
-    from,
-    `🛺 *Tuk-Tuk bot*\n\n• Need a ride? Send your *location* (📎 → Location).\n• Are you a driver? Send "online", then share your location.\n• Cancel a ride? Send "cancel".`
+  if (text === "done") {
+    return handleDone(from);
+  }
+  return sendText(from,
+    `🛺 *Tuk-Tuk bot*\n\n• Need a ride? Send your *location*\n• Driver? Send "online" + share location\n• Cancel a ride? Send "cancel"\n• Finish a ride? Send "done"`
   );
 }
 
-// ---- Location handler ----
-async function handleLocation(from, name, loc) {
+async function handleLocation(from, name, loc, req) {
   const driver = drivers.get(from);
 
-  // If an online driver sends a location, update their position.
   if (driver && driver.online) {
     driver.location = loc;
     driver.name = name;
-    return sendText(
-      from,
-      `✅ Location updated, ${name}. You're visible to nearby riders. Re-share when you move to a new area.`
-    );
+
+    // Also update tracking for any active ride this driver has
+    const activeRideId = activeDriverRide.get(from);
+    if (activeRideId) {
+      const ride = rides.get(activeRideId);
+      if (ride && ride.status === "accepted") {
+        ride.driverLocation = loc;
+        ride.lastUpdate = Date.now();
+      }
+    }
+
+    return sendText(from, `✅ Location updated, ${name}. You're visible to nearby riders.`);
   }
 
-  // Otherwise it's a rider requesting a ride — start the broadcast-and-accept flow.
+  // Rider requesting a ride
   const nearby = findNearbyDrivers(loc, [...drivers.values()], { maxKm: 5, limit: 3 });
   if (nearby.length === 0) {
     return sendText(from, `😕 No tuk-tuks available near you right now. Please try again in a few minutes.`);
   }
 
-  // Create a ride request
-  const rideId = `ride_${++rideCounter}`;
+  const rideId = generateRideId();
   const ride = {
     id: rideId,
     riderPhone: from,
@@ -188,40 +233,34 @@ async function handleLocation(from, name, loc) {
     status: "pending",
     pingedDrivers: nearby.map((d) => d.phone),
     acceptedBy: null,
+    driverName: null,
+    driverLocation: null,
+    lastUpdate: null,
     timer: null,
   };
-
-  // Set a timeout — if no driver accepts in 3 minutes, expire the ride
   ride.timer = setTimeout(() => expireRide(rideId), RIDE_TIMEOUT_MS);
-
   rides.set(rideId, ride);
 
-  // Map each pinged driver to this ride (so we know what "accept" means when they reply)
   for (const d of nearby) {
     pendingOffers.set(d.phone, rideId);
   }
 
-  // Tell the rider we're looking
-  await sendText(from, `🔍 Looking for a tuk-tuk near you... I'm asking ${nearby.length} nearby driver${nearby.length > 1 ? "s" : ""}. You'll hear back shortly.\n\nSend "cancel" to cancel.`);
+  await sendText(from, `🔍 Looking for a tuk-tuk near you... asking ${nearby.length} driver${nearby.length > 1 ? "s" : ""}. You'll hear back shortly.\n\nSend "cancel" to cancel.`);
 
-  // Ping each nearby driver
   for (const d of nearby) {
-    await sendText(
-      d.phone,
+    await sendText(d.phone,
       `🔔 *Ride request!*\nRider: ${name}\nDistance: ~${d.distanceKm.toFixed(1)} km from you\n\nReply *accept* to take this ride, or *reject* to pass.`
     );
   }
-
   console.log(`Ride ${rideId}: ${nearby.length} drivers pinged for rider ${from}`);
 }
 
 // ---- Driver accepts ----
-async function handleAccept(driverPhone, driverName) {
+async function handleAccept(driverPhone, driverName, req) {
   const rideId = pendingOffers.get(driverPhone);
   if (!rideId) {
     return sendText(driverPhone, `No pending ride request for you right now.`);
   }
-
   const ride = rides.get(rideId);
   if (!ride || ride.status !== "pending") {
     pendingOffers.delete(driverPhone);
@@ -231,38 +270,43 @@ async function handleAccept(driverPhone, driverName) {
   // Match!
   ride.status = "accepted";
   ride.acceptedBy = driverPhone;
+  ride.driverName = driverName;
   clearTimeout(ride.timer);
 
   const driver = drivers.get(driverPhone);
-  const distKm = driver?.location
-    ? require("./matching").distanceKm(ride.riderLocation, driver.location)
-    : null;
-
-  // Estimate arrival time: ~20 km/h average tuk-tuk speed in urban traffic,
-  // multiply straight-line distance by 1.4 to approximate road distance.
-  let etaText = "";
-  let distText = "";
-  if (distKm !== null) {
-    distText = `~${distKm.toFixed(1)} km away`;
-    const etaMinutes = Math.max(1, Math.round((distKm * 1.4) / 20 * 60));
-    etaText = etaMinutes <= 2
-      ? `\n⏱ Estimated arrival: *~2 minutes*`
-      : `\n⏱ Estimated arrival: *~${etaMinutes} minutes*`;
+  if (driver?.location) {
+    ride.driverLocation = driver.location;
   }
 
-  // Tell the rider
-  await sendText(
-    ride.riderPhone,
-    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}${etaText}\nContact them: wa.me/${driverPhone}\n\nThey're on the way!`
+  // Track which ride this driver is on
+  activeDriverRide.set(driverPhone, rideId);
+
+  // Calculate ETA
+  const dist = driver?.location ? distanceKm(ride.riderLocation, driver.location) : null;
+  let etaText = "";
+  let distText = "";
+  if (dist !== null) {
+    distText = `~${dist.toFixed(1)} km away`;
+    const etaMin = Math.max(1, Math.round((dist * 1.4) / 20 * 60));
+    etaText = `\n⏱ Estimated arrival: *~${Math.max(2, etaMin)} minutes*`;
+  }
+
+  // Build tracking URLs
+  const base = getBaseUrl(req);
+  const riderTrackUrl = `${base}/track/${rideId}?role=rider`;
+  const driverTrackUrl = `${base}/track/${rideId}?role=driver`;
+
+  // Tell the rider — with tracking link
+  await sendText(ride.riderPhone,
+    `✅ *Driver found!*\n\nYour driver: ${driverName} ${distText}${etaText}\n\n📍 *Track your tuk-tuk live:*\n${riderTrackUrl}\n\nOr contact them: wa.me/${driverPhone}\n\nSend "cancel" to cancel or "done" when you arrive.`
   );
 
-  // Confirm to the driver (include ETA so they know the expectation too)
-  await sendText(
-    driverPhone,
-    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\nContact: wa.me/${ride.riderPhone}\n\nHead to their location. Safe driving!`
+  // Tell the driver — with tracking link (shares their GPS with rider)
+  await sendText(driverPhone,
+    `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\n\n📍 *Open to navigate — this shares your location with the rider:*\n${driverTrackUrl}\n\nOr contact rider: wa.me/${ride.riderPhone}\n\nSend "done" when the ride is complete.`
   );
 
-  // Tell the other pinged drivers the ride is taken
+  // Tell other drivers it's taken
   for (const otherPhone of ride.pingedDrivers) {
     if (otherPhone !== driverPhone) {
       pendingOffers.delete(otherPhone);
@@ -270,84 +314,121 @@ async function handleAccept(driverPhone, driverName) {
     }
   }
   pendingOffers.delete(driverPhone);
-
-  console.log(`Ride ${rideId}: accepted by ${driverPhone}`);
+  console.log(`Ride ${rideId}: accepted by ${driverPhone}, tracking active`);
 }
 
 // ---- Driver rejects ----
-async function handleReject(driverPhone, driverName) {
+async function handleReject(driverPhone) {
   const rideId = pendingOffers.get(driverPhone);
   if (!rideId) {
     return sendText(driverPhone, `No pending ride request for you right now.`);
   }
-
   pendingOffers.delete(driverPhone);
   await sendText(driverPhone, `OK, skipped. You'll get the next one.`);
 
-  // Check if all drivers have rejected
   const ride = rides.get(rideId);
   if (ride && ride.status === "pending") {
-    const remainingDrivers = ride.pingedDrivers.filter((p) => pendingOffers.get(p) === rideId);
-    if (remainingDrivers.length === 0) {
-      // Everyone rejected
+    const remaining = ride.pingedDrivers.filter((p) => pendingOffers.get(p) === rideId);
+    if (remaining.length === 0) {
       ride.status = "rejected";
       clearTimeout(ride.timer);
-      await sendText(
-        ride.riderPhone,
-        `😕 No drivers accepted your ride right now. Please try again in a minute — more drivers may come online.`
-      );
+      await sendText(ride.riderPhone, `😕 No drivers accepted your ride right now. Please try again in a minute.`);
       console.log(`Ride ${rideId}: all drivers rejected`);
     }
   }
 }
 
-// ---- Rider cancels ----
-async function handleCancel(riderPhone) {
-  // Find this rider's pending ride
+// ---- Cancel (works for pending AND accepted rides) ----
+async function handleCancel(from) {
+  // Check if this is a rider cancelling
   const ride = [...rides.values()].find(
-    (r) => r.riderPhone === riderPhone && r.status === "pending"
+    (r) => r.riderPhone === from && (r.status === "pending" || r.status === "accepted")
   );
-  if (!ride) {
-    return sendText(riderPhone, `You don't have an active ride request to cancel.`);
+  if (ride) {
+    const wasAccepted = ride.status === "accepted";
+    ride.status = "cancelled";
+    clearTimeout(ride.timer);
+
+    // Clean up pending offers
+    for (const dp of ride.pingedDrivers) {
+      if (pendingOffers.get(dp) === ride.id) pendingOffers.delete(dp);
+    }
+
+    // If ride was already accepted, notify the driver
+    if (wasAccepted && ride.acceptedBy) {
+      activeDriverRide.delete(ride.acceptedBy);
+      await sendText(ride.acceptedBy, `❌ The rider cancelled the ride. You're back online for new requests.`);
+    }
+
+    await sendText(from, `Ride cancelled. Send a new location whenever you need a ride.`);
+    console.log(`Ride ${ride.id}: cancelled by rider ${wasAccepted ? "(was accepted)" : "(was pending)"}`);
+    return;
   }
 
-  ride.status = "cancelled";
-  clearTimeout(ride.timer);
-
-  // Notify pinged drivers
-  for (const driverPhone of ride.pingedDrivers) {
-    if (pendingOffers.get(driverPhone) === ride.id) {
-      pendingOffers.delete(driverPhone);
-      await sendText(driverPhone, `The rider cancelled the request.`);
+  // Check if this is a driver cancelling their active ride
+  const driverRideId = activeDriverRide.get(from);
+  if (driverRideId) {
+    const dRide = rides.get(driverRideId);
+    if (dRide && dRide.status === "accepted") {
+      dRide.status = "cancelled";
+      activeDriverRide.delete(from);
+      await sendText(dRide.riderPhone, `❌ Your driver had to cancel. Send your location to find another tuk-tuk.`);
+      await sendText(from, `Ride cancelled. You're back online for new requests.`);
+      console.log(`Ride ${driverRideId}: cancelled by driver`);
+      return;
     }
   }
 
-  await sendText(riderPhone, `Ride cancelled. Send a new location whenever you need a ride.`);
-  console.log(`Ride ${ride.id}: cancelled by rider`);
+  return sendText(from, `You don't have an active ride to cancel.`);
 }
 
-// ---- Ride expires (no one accepted in time) ----
+// ---- Done (either party can end the ride) ----
+async function handleDone(from) {
+  // Check if rider
+  const riderRide = [...rides.values()].find(
+    (r) => r.riderPhone === from && r.status === "accepted"
+  );
+  if (riderRide) {
+    riderRide.status = "completed";
+    if (riderRide.acceptedBy) activeDriverRide.delete(riderRide.acceptedBy);
+    await sendText(from, `🎉 Ride complete! Thanks for using TukTuk. Send a location anytime for your next ride.`);
+    if (riderRide.acceptedBy) {
+      await sendText(riderRide.acceptedBy, `✅ Ride completed. You're back online — send "offline" if you're done for the day.`);
+    }
+    console.log(`Ride ${riderRide.id}: completed`);
+    return;
+  }
+
+  // Check if driver
+  const driverRideId = activeDriverRide.get(from);
+  if (driverRideId) {
+    const dRide = rides.get(driverRideId);
+    if (dRide && dRide.status === "accepted") {
+      dRide.status = "completed";
+      activeDriverRide.delete(from);
+      await sendText(from, `✅ Ride completed. You're back online — send "offline" if you're done for the day.`);
+      await sendText(dRide.riderPhone, `🎉 Ride complete! Thanks for using TukTuk. Send a location anytime for your next ride.`);
+      console.log(`Ride ${dRide.id}: completed by driver`);
+      return;
+    }
+  }
+
+  return sendText(from, `You don't have an active ride to complete.`);
+}
+
+// ---- Ride expires ----
 async function expireRide(rideId) {
   const ride = rides.get(rideId);
   if (!ride || ride.status !== "pending") return;
-
   ride.status = "expired";
-
-  // Clean up pending offers
-  for (const driverPhone of ride.pingedDrivers) {
-    if (pendingOffers.get(driverPhone) === rideId) {
-      pendingOffers.delete(driverPhone);
-    }
+  for (const dp of ride.pingedDrivers) {
+    if (pendingOffers.get(dp) === rideId) pendingOffers.delete(dp);
   }
-
-  await sendText(
-    ride.riderPhone,
-    `⏰ No driver accepted in time. Please try again — send your location to search for available tuk-tuks.`
-  );
+  await sendText(ride.riderPhone, `⏰ No driver accepted in time. Send your location to try again.`);
   console.log(`Ride ${rideId}: expired`);
 }
 
-// ---- Cleanup helper ----
+// ---- Cleanup ----
 function cleanupDriverOffer(driverPhone) {
   const rideId = pendingOffers.get(driverPhone);
   if (rideId) pendingOffers.delete(driverPhone);
