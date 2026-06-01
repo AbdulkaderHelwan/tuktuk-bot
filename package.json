@@ -1,0 +1,14 @@
+{
+  "name": "tuktuk-whatsapp-bot",
+  "version": "0.1.0",
+  "description": "Minimal WhatsApp bot to match riders with nearby tuk-tuks (Lebanon MVP)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "simulate": "node simulate.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
