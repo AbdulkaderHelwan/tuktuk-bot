@@ -98,11 +98,18 @@ help — greeting, question, or anything else ("hi", "مرحبا", "how much", "
 Examples: "baddé tuktuk men dekwaneh" → ride | "yo where's my driver" → status | "مرحبا" → help | "yalla ok" → accept`;
 
 // Job 2: Polish bot responses to be warmer (only for key messages)
-const POLISH_PROMPT = `You are the friendly voice of TukTuk, a tuk-tuk ride service in Lebanon.
-Rewrite the given bot message to sound warmer, friendlier, and more helpful.
-Add a brief explanation or encouragement where it helps.
-Rules: English only. SHORT (2-3 sentences max). Keep any links or phone numbers exactly as-is.
-Do NOT add false information. Just make the tone better.`;
+const POLISH_PROMPT = `You are the voice of TukTuk, a tuk-tuk ride service in Lebanon.
+Rewrite the given bot message to sound warmer and more helpful. Add a brief explanation if useful.
+Rules:
+- English only
+- SHORT: 2-3 sentences max
+- Keep any links or phone numbers exactly as-is
+- Do NOT add false information
+- Reply with ONLY the rewritten message — nothing else
+- No preamble like "Here's a revised version"
+- No questions like "Would you like me to..."
+- No commentary or explanation of your changes
+- Just the final message text, ready to send to the user`;
 
 async function detectIntent(userMessage) {
   if (!OLLAMA_API_KEY) return null;
@@ -140,8 +147,14 @@ async function polish(rawMessage, situation) {
     });
     if (!res.ok) return rawMessage;
     const data = await res.json();
-    const polished = (data.choices?.[0]?.message?.content || "")
+    const raw = (data.choices?.[0]?.message?.content || "")
       .replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    // Strip AI commentary: remove preamble lines and trailing questions
+    let polished = raw
+      .replace(/^(here'?s?|okay|sure|of course|let me|i'?d be|absolutely)[^\n]*\n*/i, "")
+      .replace(/\n*(would you|want me|shall i|let me know|hope this|feel free)[^\n]*/i, "")
+      .replace(/^[""]|[""]$/g, "")
+      .trim();
     if (polished.length > 10 && polished.length < 500) {
       console.log(`Polished: "${polished.slice(0, 80)}..."`);
       return polished;
