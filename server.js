@@ -247,7 +247,7 @@ async function handleText(from, name, text, req) {
     const base = getBaseUrl(req);
     const url = `${base}/driver?phone=${from}`;
     return sendText(from,
-      `Welcome, ${name}! 🛺\n\n📍 *Tap this link to go online:*\n${url}\n\nKeep the page open while you drive. You'll get ride requests here on WhatsApp.\n\nSend "offline" to stop.`
+      `Welcome, ${name}! You're now a TukTuk driver 🛺\n\n📍 *Share your location now* (📎 → Location) so riders nearby can find you.\n\nFor automatic GPS tracking while you drive, tap here:\n${url}\n\nSend "offline" anytime to stop.`
     );
   }
   if (["ride", "taxi", "tuktuk", "تكتك", "توكتوك"].includes(lower)) {
@@ -313,7 +313,8 @@ async function handleLocation(from, name, loc, req) {
   const driver = drivers.get(from);
   if (driver && driver.online) {
     driver.location = loc;
-    return sendText(from, `✅ Location updated, ${name}.`);
+    const onlineCount = [...drivers.values()].filter(d => d.online && d.location).length;
+    return sendText(from, `✅ You're now visible to riders, ${name}! Location set. ${onlineCount} driver${onlineCount !== 1 ? "s" : ""} online.\n\nRe-share your location when you move to a new area. Ride requests will come here on WhatsApp.`);
   }
 
   const nearby = findNearbyDrivers(loc, [...drivers.values()], { maxKm: 5, limit: 3 });
