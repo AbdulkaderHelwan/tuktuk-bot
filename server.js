@@ -8,6 +8,7 @@ const path = require("path");
 const { findNearbyDrivers, distanceKm } = require("./matching");
 
 const app = express();
+app.set("trust proxy", true);  // Render runs behind a proxy — needed for correct https detection
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
@@ -54,6 +55,11 @@ function getBaseUrl(req) {
   if (BASE_URL) return BASE_URL;
   if (detectedBaseUrl) return detectedBaseUrl;
   detectedBaseUrl = `${req.protocol}://${req.get("host")}`;
+  // Safety net: force HTTPS on known cloud hosts (GPS requires it)
+  if (detectedBaseUrl.startsWith("http://") && detectedBaseUrl.includes(".onrender.com")) {
+    detectedBaseUrl = detectedBaseUrl.replace("http://", "https://");
+  }
+  console.log(`Auto-detected BASE_URL: ${detectedBaseUrl}`);
   return detectedBaseUrl;
 }
 function generateRideId() { return "ride_" + crypto.randomBytes(6).toString("hex"); }
