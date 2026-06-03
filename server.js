@@ -17,6 +17,8 @@ const {
   WHATSAPP_TOKEN,
   PHONE_NUMBER_ID,
   VERIFY_TOKEN,
+  OLLAMA_API_KEY,
+  OLLAMA_MODEL = "qwen3:4b",  // good Arabic support, fast, free on Ollama Cloud
   PORT = 3000,
   BASE_URL = "",
 } = process.env;
@@ -41,6 +43,8 @@ async function checkConfig() {
   console.log(`PHONE_NUMBER_ID: ${PHONE_NUMBER_ID || "MISSING!"}`);
   console.log(`WHATSAPP_TOKEN:  ${tokenPreview}`);
   console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
+  console.log(`OLLAMA_API_KEY:  ${OLLAMA_API_KEY ? "set" : "not set — AI disabled, keyword-only mode"}`);
+  console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
   try {
     const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}`, {
       headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` },
@@ -84,6 +88,78 @@ async function sendLocation(to, lat, lng, name, address) {
   });
   if (!res.ok) console.error(`location send failed to ${to}: ${await res.text()}`);
   else console.log(`location sent to ${to}`);
+}
+
+// ================= AI (Claude Haiku — understands Arabic, English, Arabizi) =================
+
+const AI_SYSTEM_PROMPT = `You are the TukTuk bot 🛺, a friendly tuk-tuk ride assistant in Lebanon.
+You speak Arabic, English, and Arabizi (Lebanese Arabic in Latin letters like "kifak", "baddé", "shu").
+Always reply in the SAME language the user wrote in. Keep replies SHORT (1-3 sentences max).
+
+Your job: figure out what the user wants and respond helpfully.
+
+You MUST reply with valid JSON only, nothing else. Format:
+{"intent": "...", "message": "..."}
+
+Intents:
+- "ride_request" — user wants a tuk-tuk ride (any phrasing: "بدي توكتوك", "need a ride", "send me a tuktuk", etc.)
+- "driver_online" — user wants to work as a driver ("بدي اشتغل", "I want to drive", "sign me up as driver")
+- "accept_ride" — user wants to accept a ride ("ماشي", "yalla", "I'll take it", "أنا جاي")
+- "reject_ride" — user wants to skip a ride ("مش فاضي", "skip", "not now")
+- "cancel" — user wants to cancel ("الغي", "cancel my ride", "ma baddé")
+- "done" — ride is finished ("وصلت", "arrived", "khalas")
+- "offline" — driver wants to stop ("بدي وقف", "I'm done for today")
+- "status" — user asks about their ride or where the driver is
+- "chat" — general conversation, greeting, question about pricing/service, anything else
+
+For "status" intent, include a helpful message. For "chat" intent, be warm and Lebanese-friendly.
+For action intents, include a SHORT confirmation message in the user's language.
+
+Examples:
+User: "مرحبا" → {"intent": "chat", "message": "أهلاً وسهلاً! 🛺 بدك توكتوك؟ ابعتلي موقعك وبلاقيلك أقرب واحد."}
+User: "baddé tuktuk" → {"intent": "ride_request", "message": "يلا! ابعتلي موقعك (📎 → Location) لا لاقيلك أقرب توكتوك 🛺"}
+User: "I want to be a driver" → {"intent": "driver_online", "message": "Welcome! Let me set you up as a driver 🛺"}
+User: "shu l as3ar?" → {"intent": "chat", "message": "الأسعار بتختلف حسب المسافة، بس بشكل عام أرخص بكتير من التاكسي! ابعتلي موقعك وبقلك 🛺"}
+User: "yalla meshé" → {"intent": "accept_ride", "message": "تمام! 🛺"}
+User: "khalas wselna" → {"intent": "done", "message": "شكراً! 🎉"}`;
+
+async function askAI(userMessage, context) {
+  if (!OLLAMA_API_KEY) {
+    console.log("No OLLAMA_API_KEY — falling back to keyword matching");
+    return null;
+  }
+  try {
+    const contextNote = context ? `\n[Context: ${context}]` : "";
+    const res = await fetch("https://ollama.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OLLAMA_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        max_tokens: 200,
+        temperature: 0.3,
+        messages: [
+          { role: "system", content: AI_SYSTEM_PROMPT },
+          { role: "user", content: userMessage + contextNote },
+        ],
+      }),
+    });
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    // Parse JSON from response (strip markdown fences and thinking tags if present)
+    const clean = text
+      .replace(/<think>[\s\S]*?<\/think>/g, "")  // remove thinking tags (Qwen uses these)
+      .replace(/```json|```/g, "")
+      .trim();
+    const parsed = JSON.parse(clean);
+    console.log(`AI intent: ${parsed.intent} for "${userMessage}"`);
+    return parsed;
+  } catch (e) {
+    console.error("AI error:", e.message);
+    return null;
+  }
 }
 
 // ================= WEBHOOK =================
@@ -219,9 +295,63 @@ async function handleText(from, name, text, req) {
     return sendText(from, `🛺 Share your *location* (📎 → Location) and I'll find you a tuk-tuk.`);
   }
 
-  return sendText(from,
-    `🛺 *Tuk-Tuk bot*\n\n• Need a ride? Send your *location*\n• Driver? Send "online"\n• Cancel a ride? Send "cancel"\n• Finish a ride? Send "done"`
+  // ---- AI handles everything else: natural language in Arabic, English, Arabizi ----
+  const driver = drivers.get(from);
+  const activeRide = [...rides.values()].find(
+    r => (r.riderPhone === from || r.acceptedBy === from) && (r.status === "pending" || r.status === "accepted")
   );
+  const context = [
+    driver?.online ? "User is a registered online driver" : "",
+    activeRide?.status === "pending" ? "User has a pending ride request" : "",
+    activeRide?.status === "accepted" ? "User has an active ride in progress" : "",
+  ].filter(Boolean).join(". ") || "New user, no active ride";
+
+  const ai = await askAI(text, context);
+
+  if (!ai) {
+    // AI unavailable — show basic help
+    return sendText(from,
+      `🛺 *Tuk-Tuk bot*\n\n• Need a ride? Send your *location*\n• Driver? Send "online"\n• Cancel a ride? Send "cancel"\n• Finish a ride? Send "done"`
+    );
+  }
+
+  // Route AI-detected intents to the right handler
+  switch (ai.intent) {
+    case "ride_request":
+      return sendText(from, ai.message || `🛺 Share your *location* (📎 → Location) and I'll find you a tuk-tuk.`);
+    case "driver_online":
+      // Trigger the actual online flow
+      cleanupDriverOffer(from);
+      drivers.set(from, { phone: from, name, online: true, location: null, lastGPS: null });
+      const base = getBaseUrl(req);
+      const driverUrl = `${base}/driver?phone=${from}`;
+      return sendText(from,
+        `${ai.message}\n\n📍 *Tap this link to go online:*\n${driverUrl}\n\nKeep the page open while you drive.`
+      );
+    case "accept_ride":
+      return handleAccept(from, name, req);
+    case "reject_ride":
+      return handleReject(from);
+    case "cancel":
+      return handleCancel(from);
+    case "done":
+      return handleDone(from);
+    case "offline":
+      const d = drivers.get(from);
+      if (d) d.online = false;
+      cleanupDriverOffer(from);
+      return sendText(from, ai.message || `You're now offline.`);
+    case "status":
+      if (activeRide?.status === "accepted") {
+        return sendText(from, ai.message || `Your ride is in progress.`);
+      } else if (activeRide?.status === "pending") {
+        return sendText(from, ai.message || `Looking for a driver... please wait.`);
+      }
+      return sendText(from, ai.message || `You don't have an active ride right now.`);
+    default:
+      // "chat" or unknown — just send the AI's conversational response
+      return sendText(from, ai.message);
+  }
 }
 
 // Rider sends location → find nearest drivers
