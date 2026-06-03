@@ -7,83 +7,46 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #fff; min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; }
-
-  .card {
-    background: rgba(255,255,255,0.06); border-radius: 24px; padding: 32px 24px;
-    max-width: 340px; width: 100%; backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.08);
-  }
-
+  .card { background: rgba(255,255,255,0.06); border-radius: 24px; padding: 32px 24px; max-width: 340px; width: 100%; backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); }
   .emoji { font-size: 56px; margin-bottom: 16px; }
   .title { font-size: 22px; font-weight: 800; color: #f2c94c; margin-bottom: 6px; }
   .subtitle { font-size: 14px; color: #a0a0b0; margin-bottom: 24px; line-height: 1.5; }
-
-  #start-btn {
-    background: linear-gradient(135deg, #f2994a, #f2c94c); color: #1a1a2e;
-    border: none; border-radius: 16px; padding: 18px 40px; font-size: 18px; font-weight: 800;
-    cursor: pointer; box-shadow: 0 4px 24px rgba(242,153,74,0.4); width: 100%;
-    transition: transform 0.15s;
-  }
+  #start-btn { background: linear-gradient(135deg, #f2994a, #f2c94c); color: #1a1a2e; border: none; border-radius: 16px; padding: 18px 40px; font-size: 18px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 24px rgba(242,153,74,0.4); width: 100%; transition: transform 0.15s; }
   #start-btn:active { transform: scale(0.95); }
-  #start-btn:disabled { opacity: 0.5; cursor: default; }
-
+  #start-btn:disabled { opacity: 0.5; }
   #active-panel { display: none; }
   #active-panel.show { display: block; }
   #start-panel.hidden { display: none; }
-
-  .status-ring {
-    width: 100px; height: 100px; border-radius: 50%;
-    background: linear-gradient(135deg, #27ae60, #2ecc71);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 40px; margin: 0 auto 16px;
-    box-shadow: 0 0 0 0 rgba(39,174,96,0.4);
-    animation: ring-pulse 2s infinite;
-  }
-  @keyframes ring-pulse {
-    0% { box-shadow: 0 0 0 0 rgba(39,174,96,0.4); }
-    70% { box-shadow: 0 0 0 20px rgba(39,174,96,0); }
-    100% { box-shadow: 0 0 0 0 rgba(39,174,96,0); }
-  }
-
+  .status-ring { width: 100px; height: 100px; border-radius: 50%; background: linear-gradient(135deg, #27ae60, #2ecc71); display: flex; align-items: center; justify-content: center; font-size: 40px; margin: 0 auto 16px; box-shadow: 0 0 0 0 rgba(39,174,96,0.4); animation: ring-pulse 2s infinite; }
+  @keyframes ring-pulse { 0% { box-shadow: 0 0 0 0 rgba(39,174,96,0.4); } 70% { box-shadow: 0 0 0 20px rgba(39,174,96,0); } 100% { box-shadow: 0 0 0 0 rgba(39,174,96,0); } }
   .active-title { font-size: 18px; font-weight: 700; color: #2ecc71; margin-bottom: 4px; }
   .active-sub { font-size: 13px; color: #a0a0b0; margin-bottom: 20px; }
-
   .stat-row { display: flex; justify-content: space-around; margin-bottom: 20px; }
   .stat { text-align: center; }
   .stat-val { font-size: 24px; font-weight: 800; color: #f2c94c; }
   .stat-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-
   .last-update { font-size: 12px; color: #666; margin-bottom: 16px; }
-
-  #stop-btn {
-    background: rgba(255,255,255,0.08); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3);
-    border-radius: 12px; padding: 12px 32px; font-size: 14px; font-weight: 600;
-    cursor: pointer; width: 100%; transition: background 0.15s;
-  }
-  #stop-btn:active { background: rgba(231,76,60,0.15); }
-
+  #stop-btn { background: rgba(255,255,255,0.08); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3); border-radius: 12px; padding: 12px 32px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%; }
   .warning { background: rgba(231,76,60,0.15); border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #e74c3c; line-height: 1.4; display: none; }
   .warning.show { display: block; }
-
   .tip { background: rgba(242,201,76,0.1); border-radius: 12px; padding: 12px 16px; margin-top: 16px; font-size: 12px; color: #f2c94c; line-height: 1.4; }
+  .wake-badge { display: inline-block; background: rgba(39,174,96,0.2); color: #2ecc71; font-size: 11px; padding: 3px 8px; border-radius: 6px; margin-top: 8px; }
+  .wake-badge.off { background: rgba(231,76,60,0.2); color: #e74c3c; }
 </style>
 </head>
 <body>
-
 <div class="card">
   <div id="start-panel">
     <div class="emoji">🛺</div>
     <div class="title">Go Online</div>
-    <div class="subtitle">Tap the button to start sharing your location. Riders nearby will be able to find you.</div>
+    <div class="subtitle">Tap the button to start sharing your location. Riders nearby will be able to find you all day.</div>
     <button id="start-btn" onclick="startGPS()">Start Sharing Location</button>
-    <div class="tip">💡 Keep this page open while driving. You can switch to WhatsApp — your GPS keeps running.</div>
+    <div class="tip">💡 This page tracks your location all day. You can switch to WhatsApp — GPS keeps running in the background. Don't close this tab!</div>
   </div>
-
   <div id="active-panel">
     <div class="status-ring">🛺</div>
     <div class="active-title">You're Online!</div>
     <div class="active-sub">Riders nearby can find you</div>
-
     <div class="stat-row">
       <div class="stat">
         <div class="stat-val" id="update-count">0</div>
@@ -94,22 +57,26 @@
         <div class="stat-label">Online</div>
       </div>
     </div>
-
     <div class="last-update" id="last-update">Waiting for GPS...</div>
+    <div class="wake-badge" id="wake-badge">Screen lock: active</div>
     <div class="warning" id="gps-warning">⚠️ GPS signal lost. Make sure location is enabled.</div>
-
     <button id="stop-btn" onclick="stopGPS()">Go Offline</button>
-    <div class="tip">💡 Switch back to WhatsApp to receive ride requests — your location keeps updating here.</div>
+    <div class="tip">💡 Switch to WhatsApp for ride requests — your GPS keeps updating here. Don't close this tab!</div>
   </div>
 </div>
-
 <script>
 const params = new URLSearchParams(window.location.search);
 const driverPhone = params.get('phone') || 'unknown';
-
 let watchId = null, updateCount = 0, startTime = null, timerInterval = null;
+let wakeLock = null;
+let lastSendTime = 0;
+const MIN_SEND_INTERVAL = 10000; // send location at most every 10 seconds
 
 async function sendLocation(lat, lng) {
+  // Throttle: don't send more often than every 10 seconds
+  const now = Date.now();
+  if (now - lastSendTime < MIN_SEND_INTERVAL) return;
+  lastSendTime = now;
   try {
     await fetch('/api/driver/location', {
       method: 'POST',
@@ -123,6 +90,37 @@ async function sendLocation(lat, lng) {
   } catch (e) { console.error('Send failed:', e); }
 }
 
+// Screen Wake Lock — prevents phone from sleeping and killing GPS
+async function requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      document.getElementById('wake-badge').textContent = 'Screen lock: active';
+      document.getElementById('wake-badge').classList.remove('off');
+      // Re-acquire wake lock if page becomes visible again (e.g. switching back from WhatsApp)
+      wakeLock.addEventListener('release', () => {
+        document.getElementById('wake-badge').textContent = 'Screen lock: released';
+        document.getElementById('wake-badge').classList.add('off');
+      });
+      console.log('Wake lock acquired');
+    } else {
+      document.getElementById('wake-badge').textContent = 'Screen lock: not supported';
+      document.getElementById('wake-badge').classList.add('off');
+    }
+  } catch (e) {
+    document.getElementById('wake-badge').textContent = 'Screen lock: denied';
+    document.getElementById('wake-badge').classList.add('off');
+    console.log('Wake lock failed:', e);
+  }
+}
+
+// Re-acquire wake lock when tab becomes visible again
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && watchId !== null && !wakeLock) {
+    await requestWakeLock();
+  }
+});
+
 function startGPS() {
   if (!navigator.geolocation) { alert('GPS not supported.'); return; }
   document.getElementById('start-btn').disabled = true;
@@ -135,6 +133,7 @@ function startGPS() {
         document.getElementById('start-panel').classList.add('hidden');
         document.getElementById('active-panel').classList.add('show');
         timerInterval = setInterval(updateTimer, 1000);
+        requestWakeLock();
       }
       sendLocation(pos.coords.latitude, pos.coords.longitude);
     },
@@ -154,6 +153,7 @@ function startGPS() {
 function stopGPS() {
   if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
   if (timerInterval) clearInterval(timerInterval);
+  if (wakeLock) { wakeLock.release(); wakeLock = null; }
   fetch('/api/driver/offline', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ phone: driverPhone }),
