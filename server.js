@@ -229,6 +229,24 @@ async function handleText(from, name, text, req) {
   if (["reject", "no", "n", "pass"].includes(lower)) return handleReject(from);
   if (lower === "cancel") return handleCancel(from);
   if (lower === "done") return handleDone(from);
+  if (["offline", "stop"].includes(lower)) {
+    const d = drivers.get(from);
+    if (d) d.online = false;
+    cleanupDriverOffer(from);
+    return sendText(from, `You're offline now. Send "online" when you're ready to drive again. 🛺`);
+  }
+  if (["driver", "online", "سائق"].includes(lower)) {
+    cleanupDriverOffer(from);
+    drivers.set(from, { phone: from, name, online: true, location: null, lastGPS: null });
+    const base = getBaseUrl(req);
+    const url = `${base}/driver?phone=${from}`;
+    return sendText(from,
+      `Welcome, ${name}! 🛺\n\n📍 *Tap this link to go online:*\n${url}\n\nKeep the page open while you drive. You'll get ride requests here on WhatsApp.\n\nSend "offline" to stop.`
+    );
+  }
+  if (["ride", "taxi", "tuktuk", "تكتك", "توكتوك"].includes(lower)) {
+    return sendText(from, `🛺 Share your *location* (📎 → Location) and I'll find you the nearest tuk-tuk!`);
+  }
 
   // Try AI intent detection for everything else
   const intent = await detectIntent(text);
