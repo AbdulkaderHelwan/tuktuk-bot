@@ -24,6 +24,21 @@ const {
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const RIDE_TIMEOUT_MS = 3 * 60 * 1000;
+const STALE_DRIVER_MS = 10 * 60 * 1000; // 10 minutes without GPS = stale
+
+// Clean up stale drivers every 2 minutes
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [phone, driver] of drivers) {
+    if (driver.online && driver.lastGPS && (now - driver.lastGPS > STALE_DRIVER_MS)) {
+      driver.online = false;
+      cleaned++;
+      console.log(`Driver ${phone} (${driver.name}) marked offline — no GPS update for 10 min`);
+    }
+  }
+  if (cleaned > 0) console.log(`Stale cleanup: ${cleaned} driver(s) marked offline`);
+}, 2 * 60 * 1000);
 
 // ---- State ----
 const drivers = new Map();
