@@ -146,16 +146,54 @@ async function askAI(userMessage, context) {
         ],
       }),
     });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`AI API error ${res.status}: ${errText}`);
+      return null;
+    }
+
     const data = await res.json();
-    const text = data.choices?.[0]?.message?.content || "";
-    // Parse JSON from response (strip markdown fences and thinking tags if present)
-    const clean = text
-      .replace(/<think>[\s\S]*?<\/think>/g, "")  // remove thinking tags (Qwen uses these)
-      .replace(/```json|```/g, "")
-      .trim();
-    const parsed = JSON.parse(clean);
-    console.log(`AI intent: ${parsed.intent} for "${userMessage}"`);
-    return parsed;
+    const rawText = data.choices?.[0]?.message?.content || "";
+    console.log(`AI raw response: ${rawText.slice(0, 300)}`);
+
+    if (!rawText.trim()) {
+      console.error("AI returned empty response");
+      return null;
+    }
+
+    // Strip thinking tags (Qwen uses <think>...</think>)
+    let clean = rawText.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    // Strip markdown fences
+    clean = clean.replace(/```json\s?|```/g, "").trim();
+
+    // Try parsing as JSON first
+    try {
+      const parsed = JSON.parse(clean);
+      console.log(`AI intent: ${parsed.intent}`);
+      return parsed;
+    } catch (jsonErr) {
+      // Model didn't return valid JSON — extract intent from plain text
+      console.log(`AI didn't return JSON, extracting intent from text`);
+      const lower = clean.toLowerCase();
+
+      let intent = "chat";
+      if (/ride|tuktuk|تكتك|توكتوك|بدي توك|need a|send me/.test(lower)) intent = "ride_request";
+      else if (/driver|drive|سائق|سواق|اشتغل/.test(lower)) intent = "driver_online";
+      else if (/accept|ماشي|يلا|yalla|أنا جاي/.test(lower)) intent = "accept_ride";
+      else if (/reject|skip|مش فاضي/.test(lower)) intent = "reject_ride";
+      else if (/cancel|الغي|الغ/.test(lower)) intent = "cancel";
+      else if (/done|وصلت|خلص|khalas/.test(lower)) intent = "done";
+      else if (/offline|وقف|stop/.test(lower)) intent = "offline";
+
+      // Use the model's text as the message (it's probably a good natural response)
+      // Clean it up: remove any JSON fragments
+      let message = clean.replace(/[{}"\[\]]/g, "").trim();
+      if (message.length > 300) message = message.slice(0, 300);
+
+      console.log(`AI extracted intent: ${intent}`);
+      return { intent, message: message || null };
+    }
   } catch (e) {
     console.error("AI error:", e.message);
     return null;
