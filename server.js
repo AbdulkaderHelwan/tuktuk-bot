@@ -479,6 +479,7 @@ function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (r
 // ================= APP API (PWA uses these instead of WhatsApp) =================
 
 // Serve the main app
+app.get("/", (req, res) => res.redirect("/app"));
 app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.html")));
 
 // Count nearby drivers (rider sees this on home screen)
