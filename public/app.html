@@ -121,11 +121,46 @@ input:focus{border-color:var(--primary)}
 </head>
 <body>
 
+<!-- ============ AUTH: EMAIL ============ -->
+<div id="auth-email" class="screen">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">
+    <div style="font-size:64px;margin-bottom:8px">🛺</div>
+    <div class="welcome-title" style="margin-bottom:6px">Wasselni</div>
+    <div style="color:var(--muted);font-size:14px;margin-bottom:32px">Sign in or create an account</div>
+    <div style="width:100%;max-width:320px">
+      <input id="auth-email-input" type="email" placeholder="your.email@gmail.com" autocomplete="email" inputmode="email" style="margin-bottom:12px">
+      <input id="auth-name-input" placeholder="Your name" autocomplete="name" style="margin-bottom:16px">
+      <button class="btn-primary" id="send-code-btn" onclick="requestCode()">Send Verification Code</button>
+      <div id="auth-error" style="color:var(--danger);font-size:13px;margin-top:12px;min-height:18px"></div>
+      <div style="color:var(--muted);font-size:12px;margin-top:16px">We'll send a 6-digit code to verify your email</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ AUTH: CODE ============ -->
+<div id="auth-code" class="screen">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">
+    <div style="font-size:64px;margin-bottom:8px">📬</div>
+    <div style="font-size:22px;font-weight:800;color:var(--accent);margin-bottom:6px">Check your email</div>
+    <div style="color:var(--muted);font-size:14px;margin-bottom:28px">We sent a 6-digit code to<br><span id="sent-to-email" style="color:#fff;font-weight:600"></span></div>
+    <div style="width:100%;max-width:320px">
+      <input id="auth-code-input" type="text" placeholder="000000" inputmode="numeric" maxlength="6" pattern="[0-9]*" style="margin-bottom:16px;text-align:center;font-size:24px;letter-spacing:8px;font-weight:700">
+      <button class="btn-primary" id="verify-btn" onclick="verifyCode()">Verify</button>
+      <div id="code-error" style="color:var(--danger);font-size:13px;margin-top:12px;min-height:18px"></div>
+      <button class="btn-outline" style="margin-top:12px" onclick="showScreen('auth-email')">← Use a different email</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ WELCOME ============ -->
-<div id="welcome" class="screen active">
+<div id="welcome" class="screen">
+  <div style="position:absolute;top:16px;right:16px;z-index:10">
+    <button onclick="logout()" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:var(--muted);padding:8px 14px;border-radius:20px;font-size:12px;font-family:inherit">Sign out</button>
+  </div>
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;background:radial-gradient(circle at 50% 30%,#16213e 0%,#1a1a2e 70%)">
   <div class="welcome-logo">🛺</div>
   <div class="welcome-title">Wasselni</div>
-  <div class="welcome-sub">Your nearest tuk-tuk, one tap away</div>
+  <div class="welcome-sub" id="user-greeting">Your nearest tuk-tuk, one tap away</div>
   <div class="role-buttons">
     <button class="role-btn" onclick="showScreen('rider-home'); initRider()">
       <div class="role-icon">📍</div>
@@ -136,6 +171,7 @@ input:focus{border-color:var(--primary)}
       <div><div class="role-label">I'm a driver</div><div class="role-desc">Go online and get ride requests</div></div>
     </button>
   </div>
+  </div>
 </div>
 
 <!-- ============ RIDER HOME ============ -->
@@ -144,9 +180,6 @@ input:focus{border-color:var(--primary)}
   <div class="rider-panel">
     <div class="rider-header"><div class="logo">🛺</div><div class="name">Wasselni</div></div>
     <div class="nearby-count" id="nearby-count">Looking for drivers...</div>
-    <div style="margin-bottom:12px">
-      <input id="rider-name" placeholder="Your name (optional)" autocomplete="name">
-    </div>
     <button class="btn-primary" id="find-btn" onclick="requestRide()">Find a TukTuk</button>
   </div>
 </div>
@@ -181,17 +214,15 @@ input:focus{border-color:var(--primary)}
 
 <!-- ============ DRIVER SETUP ============ -->
 <div id="driver-setup" class="screen">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center">
   <div class="setup-emoji">🛺</div>
   <div class="setup-title">Start Driving</div>
-  <div class="setup-sub">Enter your phone number to receive ride requests</div>
-  <div class="setup-input">
-    <input id="driver-phone" placeholder="Phone (+961...)" type="tel" autocomplete="tel">
-  </div>
-  <div class="setup-input">
-    <input id="driver-name" placeholder="Your name" autocomplete="name">
-  </div>
+  <div class="setup-sub">Ready to go online and accept rides?</div>
+  <div id="driver-greeting" style="background:var(--card);padding:12px 20px;border-radius:12px;margin-bottom:24px;font-weight:600"></div>
   <button class="btn-primary" style="max-width:300px" onclick="startDriver()">Go Online</button>
   <div style="margin-top:16px;font-size:12px;color:var(--muted);max-width:280px">Your GPS will start sharing so riders can find you. Keep the app open while driving.</div>
+  <button class="btn-outline" style="max-width:200px;margin-top:20px" onclick="showScreen('welcome')">← Back</button>
+  </div>
 </div>
 
 <!-- ============ DRIVER ONLINE ============ -->
@@ -245,12 +276,98 @@ input:focus{border-color:var(--primary)}
 
 <script>
 // ===== STATE =====
-let myLocation = null, myPhone = '', myName = '';
+let myLocation = null, myPhone = '', myName = '', myEmail = '', myToken = '';
 let currentRideId = null, riderMap = null, trackMap = null, driverMap = null, driverRideMap = null;
 let driverMarker = null, pickupMarker = null, routeLine = null;
 let driverWatchId = null, driverStartTime = null, driverUpdates = 0, driverTimer = null;
 let pollInterval = null, driverPollInterval = null;
 let pendingRideId = null;
+
+// ===== AUTH =====
+function checkSession() {
+  myToken = localStorage.getItem('wasselni_token') || '';
+  myEmail = localStorage.getItem('wasselni_email') || '';
+  myName = localStorage.getItem('wasselni_name') || '';
+  if (myToken && myEmail) {
+    myPhone = myEmail; // use email as the unique identifier
+    showScreen('welcome');
+    document.getElementById('user-greeting').textContent = `Hi, ${myName}!`;
+  } else {
+    showScreen('auth-email');
+  }
+}
+
+async function requestCode() {
+  const email = document.getElementById('auth-email-input').value.trim().toLowerCase();
+  const name = document.getElementById('auth-name-input').value.trim();
+  const errEl = document.getElementById('auth-error');
+  errEl.textContent = '';
+
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { errEl.textContent = 'Please enter a valid email'; return; }
+  if (!name) { errEl.textContent = 'Please enter your name'; return; }
+
+  document.getElementById('send-code-btn').disabled = true;
+  document.getElementById('send-code-btn').textContent = 'Sending...';
+
+  try {
+    const data = await api('/api/auth/request-code', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email })
+    });
+    if (data.success) {
+      myEmail = email; myName = name;
+      document.getElementById('sent-to-email').textContent = email;
+      showScreen('auth-code');
+      setTimeout(() => document.getElementById('auth-code-input').focus(), 200);
+    } else {
+      errEl.textContent = 'Could not send code. Try again.';
+    }
+  } catch (e) { errEl.textContent = 'Network error. Try again.'; }
+
+  document.getElementById('send-code-btn').disabled = false;
+  document.getElementById('send-code-btn').textContent = 'Send Verification Code';
+}
+
+async function verifyCode() {
+  const code = document.getElementById('auth-code-input').value.trim();
+  const errEl = document.getElementById('code-error');
+  errEl.textContent = '';
+
+  if (code.length !== 6) { errEl.textContent = 'Enter the 6-digit code'; return; }
+
+  document.getElementById('verify-btn').disabled = true;
+  document.getElementById('verify-btn').textContent = 'Verifying...';
+
+  try {
+    const data = await api('/api/auth/verify', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ email: myEmail, code, name: myName })
+    });
+    if (data.success) {
+      myToken = data.token; myEmail = data.email; myName = data.name; myPhone = data.email;
+      localStorage.setItem('wasselni_token', myToken);
+      localStorage.setItem('wasselni_email', myEmail);
+      localStorage.setItem('wasselni_name', myName);
+      document.getElementById('user-greeting').textContent = `Hi, ${myName}!`;
+      showScreen('welcome');
+    } else {
+      errEl.textContent = data.error === 'invalid code' ? 'Wrong code, try again' :
+                         data.error === 'code expired' ? 'Code expired — request a new one' :
+                         'Verification failed';
+    }
+  } catch (e) { errEl.textContent = 'Network error. Try again.'; }
+
+  document.getElementById('verify-btn').disabled = false;
+  document.getElementById('verify-btn').textContent = 'Verify';
+}
+
+function logout() {
+  localStorage.removeItem('wasselni_token');
+  localStorage.removeItem('wasselni_email');
+  localStorage.removeItem('wasselni_name');
+  myToken = ''; myEmail = ''; myName = ''; myPhone = '';
+  showScreen('auth-email');
+}
 
 // ===== NAV =====
 function showScreen(id) {
@@ -316,13 +433,13 @@ async function checkNearby() {
 
 async function requestRide() {
   if (!myLocation) return alert('GPS not available');
-  myName = document.getElementById('rider-name').value || 'Rider';
-  myPhone = 'app_' + Math.random().toString(36).slice(2, 10);
+  // Use authenticated user identity
+  if (!myEmail) { showScreen('auth-email'); return; }
 
   showScreen('searching');
   const data = await api('/api/ride/request', {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ riderPhone: myPhone, riderName: myName, lat: myLocation[0], lng: myLocation[1] })
+    body: JSON.stringify({ riderPhone: myEmail, riderName: myName, lat: myLocation[0], lng: myLocation[1] })
   });
 
   if (data.error) {
@@ -412,9 +529,8 @@ function completeRide() {
 
 // ===== DRIVER =====
 function startDriver() {
-  myPhone = document.getElementById('driver-phone').value.replace(/[\s\-\+]/g, '');
-  myName = document.getElementById('driver-name').value || 'Driver';
-  if (!myPhone) return alert('Please enter your phone number');
+  if (!myEmail) { showScreen('auth-email'); return; }
+  myPhone = myEmail; // use email as driver identifier
 
   // Register driver
   api('/api/driver/location', {
@@ -547,6 +663,28 @@ function goOffline() {
 
 // Register service worker
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+
+// Check session on load
+checkSession();
+
+// Update driver greeting when entering driver setup
+const originalShowScreen = showScreen;
+showScreen = function(id) {
+  originalShowScreen(id);
+  if (id === 'driver-setup' && myName) {
+    document.getElementById('driver-greeting').textContent = `${myName} • ${myEmail}`;
+  }
+};
+
+// Auto-submit code when 6 digits entered
+document.getElementById('auth-code-input').addEventListener('input', function(e) {
+  this.value = this.value.replace(/\D/g, '').slice(0, 6);
+  if (this.value.length === 6) setTimeout(verifyCode, 100);
+});
+
+// Allow Enter to submit email form
+document.getElementById('auth-email-input').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
+document.getElementById('auth-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
 </script>
 </body>
 </html>
