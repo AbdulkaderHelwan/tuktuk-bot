@@ -1,624 +1,552 @@
-// server.js — WhatsApp tuk-tuk bot with AI-powered intent detection + response polishing.
-// AI understands messy input (Arabic, English, Arabizi) and makes bot responses warmer.
-// AI is NOT a chatbot — it's a brain (understand) and a voice (polish).
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.json">
+<title>Wasselni 🛺</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#1a1a2e;--surface:#16213e;--primary:#F2994A;--accent:#F2C94C;--success:#27AE60;--danger:#E74C3C;--text:#fff;--muted:#8a8aa0;--card:rgba(255,255,255,0.06);--radius:16px}
+body{font-family:'Rubik',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;overflow-x:hidden}
+.screen{display:none;min-height:100vh;min-height:100dvh;flex-direction:column}
+.screen.active{display:flex}
+button{font-family:'Rubik',sans-serif;cursor:pointer;border:none;outline:none;-webkit-tap-highlight-color:transparent}
+.btn-primary{background:linear-gradient(135deg,var(--primary),var(--accent));color:var(--bg);border-radius:var(--radius);padding:18px 32px;font-size:17px;font-weight:700;width:100%;box-shadow:0 4px 24px rgba(242,153,74,0.3);transition:transform .15s}
+.btn-primary:active{transform:scale(.96)}
+.btn-outline{background:var(--card);color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:var(--radius);padding:16px 32px;font-size:16px;font-weight:600;width:100%}
+.btn-danger{background:rgba(231,76,60,0.15);color:var(--danger);border:1px solid rgba(231,76,60,0.2);border-radius:12px;padding:14px;font-size:14px;font-weight:600;width:100%}
+input{font-family:'Rubik',sans-serif;background:var(--surface);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:16px;color:var(--text);width:100%;outline:none}
+input::placeholder{color:var(--muted)}
+input:focus{border-color:var(--primary)}
 
-const express = require("express");
-const crypto = require("crypto");
-const path = require("path");
-const { findNearbyDrivers, distanceKm } = require("./matching");
+/* Welcome */
+#welcome{align-items:center;justify-content:center;padding:32px;text-align:center;background:radial-gradient(circle at 50% 30%,#16213e 0%,#1a1a2e 70%)}
+.welcome-logo{font-size:80px;margin-bottom:8px;filter:drop-shadow(0 4px 20px rgba(242,153,74,0.3))}
+.welcome-title{font-size:36px;font-weight:900;background:linear-gradient(135deg,var(--primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px;letter-spacing:-1px}
+.welcome-sub{color:var(--muted);font-size:14px;margin-bottom:40px}
+.role-buttons{display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px}
+.role-btn{display:flex;align-items:center;gap:16px;padding:20px;border-radius:var(--radius);background:var(--card);border:1px solid rgba(255,255,255,0.06);text-align:left;color:var(--text);transition:border-color .2s}
+.role-btn:active{border-color:var(--primary)}
+.role-icon{font-size:36px;flex-shrink:0}
+.role-label{font-weight:700;font-size:16px}
+.role-desc{font-size:12px;color:var(--muted);margin-top:2px}
 
-const app = express();
-app.set("trust proxy", true);  // Render runs behind a proxy — needed for correct https detection
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+/* Rider */
+#rider-home{position:relative}
+#rider-map{flex:1;min-height:0}
+.rider-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 32px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+.rider-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.rider-header .logo{font-size:28px}
+.rider-header .name{font-size:20px;font-weight:800;color:var(--accent)}
+.nearby-count{font-size:13px;color:var(--muted);margin-bottom:16px}
+.nearby-dot{display:inline-block;width:8px;height:8px;background:var(--success);border-radius:50%;margin-right:4px;animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
 
-const {
-  WHATSAPP_TOKEN,
-  PHONE_NUMBER_ID,
-  VERIFY_TOKEN,
-  OLLAMA_API_KEY,
-  OLLAMA_MODEL = "gemma3:4b",
-  PORT = 3000,
-  BASE_URL = "",
-} = process.env;
+/* Searching */
+#searching{align-items:center;justify-content:center;padding:32px;text-align:center}
+.search-anim{font-size:72px;animation:bounce 1s ease infinite}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+.search-text{font-size:18px;font-weight:600;margin:20px 0 8px}
+.search-sub{color:var(--muted);font-size:14px;margin-bottom:32px}
 
-const GRAPH = "https://graph.facebook.com/v21.0";
-const RIDE_TIMEOUT_MS = 3 * 60 * 1000;
-const STALE_DRIVER_MS = 10 * 60 * 1000; // 10 minutes without GPS = stale
+/* Matched / Tracking */
+#matched{position:relative}
+#track-map{flex:1;min-height:0}
+.match-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 28px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+.match-driver{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.match-avatar{width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;font-size:24px}
+.match-name{font-weight:700;font-size:17px}
+.match-status{font-size:13px;color:var(--muted)}
+.eta-bar{display:flex;justify-content:space-between;background:var(--surface);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.eta-val{font-size:26px;font-weight:800;color:var(--primary)}
+.eta-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.arrived-msg{display:none;background:linear-gradient(135deg,var(--success),#2ecc71);text-align:center;padding:14px;border-radius:12px;font-weight:700;font-size:16px;margin-bottom:12px;animation:pop .4s ease}
+.arrived-msg.show{display:block}
+@keyframes pop{0%{transform:scale(.8);opacity:0}100%{transform:scale(1);opacity:1}}
 
-// Clean up stale drivers every 2 minutes
-setInterval(() => {
-  const now = Date.now();
-  let cleaned = 0;
-  for (const [phone, driver] of drivers) {
-    if (driver.online && driver.lastGPS && (now - driver.lastGPS > STALE_DRIVER_MS)) {
-      driver.online = false;
-      cleaned++;
-      console.log(`Driver ${phone} (${driver.name}) marked offline — no GPS update for 10 min`);
+/* Driver */
+#driver-setup{align-items:center;justify-content:center;padding:32px;text-align:center}
+.setup-emoji{font-size:64px;margin-bottom:16px}
+.setup-title{font-size:22px;font-weight:800;color:var(--accent);margin-bottom:6px}
+.setup-sub{color:var(--muted);font-size:14px;margin-bottom:24px;max-width:300px}
+.setup-input{margin-bottom:16px;max-width:300px}
+#driver-online{position:relative}
+#driver-map{flex:1;min-height:0}
+.driver-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 28px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+.status-badge{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.status-dot{width:10px;height:10px;border-radius:50%;background:var(--success);animation:blink 1.5s infinite}
+.status-text{font-weight:700;font-size:16px;color:var(--success)}
+.driver-stats{display:flex;justify-content:space-around;background:var(--surface);border-radius:12px;padding:12px;margin-bottom:14px}
+.d-stat{text-align:center}
+.d-stat-val{font-size:20px;font-weight:800;color:var(--accent)}
+.d-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase}
+.waiting-text{text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px}
+
+/* Ride Request Popup */
+.request-popup{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:2000;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:24px}
+.request-popup.show{display:flex}
+.request-card{background:var(--bg);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px;width:100%;max-width:340px;text-align:center;animation:pop .3s ease}
+.req-emoji{font-size:48px;margin-bottom:12px}
+.req-title{font-size:18px;font-weight:700;margin-bottom:4px}
+.req-detail{color:var(--muted);font-size:14px;margin-bottom:20px}
+.req-buttons{display:flex;gap:12px}
+.req-buttons button{flex:1;padding:16px;border-radius:12px;font-weight:700;font-size:16px}
+.btn-accept{background:var(--success);color:#fff}
+.btn-reject{background:var(--surface);color:var(--muted);border:1px solid rgba(255,255,255,0.1)}
+
+/* Driver active ride */
+#driver-ride{position:relative}
+#driver-ride-map{flex:1;min-height:0}
+.driver-ride-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 28px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+
+/* Completed */
+#completed{align-items:center;justify-content:center;padding:32px;text-align:center}
+.complete-emoji{font-size:72px;margin-bottom:16px}
+.complete-title{font-size:24px;font-weight:800;color:var(--success);margin-bottom:8px}
+.complete-sub{color:var(--muted);font-size:14px;margin-bottom:32px;max-width:280px}
+
+/* Leaflet overrides */
+.leaflet-control-attribution{display:none!important}
+.pickup-pulse{width:20px;height:20px;background:var(--success);border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 rgba(39,174,96,0.4);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(39,174,96,0.5)}70%{box-shadow:0 0 0 15px rgba(39,174,96,0)}100%{box-shadow:0 0 0 0 rgba(39,174,96,0)}}
+.tuktuk-marker{font-size:32px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))}
+</style>
+</head>
+<body>
+
+<!-- ============ WELCOME ============ -->
+<div id="welcome" class="screen active">
+  <div class="welcome-logo">🛺</div>
+  <div class="welcome-title">Wasselni</div>
+  <div class="welcome-sub">Your nearest tuk-tuk, one tap away</div>
+  <div class="role-buttons">
+    <button class="role-btn" onclick="showScreen('rider-home'); initRider()">
+      <div class="role-icon">📍</div>
+      <div><div class="role-label">I need a ride</div><div class="role-desc">Find a tuk-tuk near you</div></div>
+    </button>
+    <button class="role-btn" onclick="showScreen('driver-setup')">
+      <div class="role-icon">🛺</div>
+      <div><div class="role-label">I'm a driver</div><div class="role-desc">Go online and get ride requests</div></div>
+    </button>
+  </div>
+</div>
+
+<!-- ============ RIDER HOME ============ -->
+<div id="rider-home" class="screen">
+  <div id="rider-map"></div>
+  <div class="rider-panel">
+    <div class="rider-header"><div class="logo">🛺</div><div class="name">Wasselni</div></div>
+    <div class="nearby-count" id="nearby-count">Looking for drivers...</div>
+    <div style="margin-bottom:12px">
+      <input id="rider-name" placeholder="Your name (optional)" autocomplete="name">
+    </div>
+    <button class="btn-primary" id="find-btn" onclick="requestRide()">Find a TukTuk</button>
+  </div>
+</div>
+
+<!-- ============ SEARCHING ============ -->
+<div id="searching" class="screen">
+  <div class="search-anim">🛺</div>
+  <div class="search-text">Looking for a tuk-tuk...</div>
+  <div class="search-sub" id="search-sub">Asking nearby drivers</div>
+  <button class="btn-outline" style="max-width:200px" onclick="cancelSearch()">Cancel</button>
+</div>
+
+<!-- ============ MATCHED / TRACKING ============ -->
+<div id="matched" class="screen">
+  <div id="track-map"></div>
+  <div class="match-panel">
+    <div class="arrived-msg" id="arrived-msg">🎉 Your tuk-tuk is here!</div>
+    <div class="match-driver">
+      <div class="match-avatar">🛺</div>
+      <div><div class="match-name" id="match-name">Driver</div><div class="match-status" id="match-status">On the way...</div></div>
+    </div>
+    <div class="eta-bar">
+      <div><div class="eta-label">Arrives in</div><div class="eta-val" id="match-eta">--</div></div>
+      <div style="text-align:right"><div class="eta-label">Distance</div><div id="match-dist" style="font-size:14px;color:var(--muted)">--</div></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-danger" style="flex:1" onclick="cancelRide()">Cancel</button>
+      <button class="btn-primary" style="flex:1" onclick="completeRide()">Done — I arrived</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DRIVER SETUP ============ -->
+<div id="driver-setup" class="screen">
+  <div class="setup-emoji">🛺</div>
+  <div class="setup-title">Start Driving</div>
+  <div class="setup-sub">Enter your phone number to receive ride requests</div>
+  <div class="setup-input">
+    <input id="driver-phone" placeholder="Phone (+961...)" type="tel" autocomplete="tel">
+  </div>
+  <div class="setup-input">
+    <input id="driver-name" placeholder="Your name" autocomplete="name">
+  </div>
+  <button class="btn-primary" style="max-width:300px" onclick="startDriver()">Go Online</button>
+  <div style="margin-top:16px;font-size:12px;color:var(--muted);max-width:280px">Your GPS will start sharing so riders can find you. Keep the app open while driving.</div>
+</div>
+
+<!-- ============ DRIVER ONLINE ============ -->
+<div id="driver-online" class="screen">
+  <div id="driver-map"></div>
+  <div class="request-popup" id="request-popup">
+    <div class="request-card">
+      <div class="req-emoji">🔔</div>
+      <div class="req-title">Ride Request!</div>
+      <div class="req-detail" id="req-detail">Rider nearby</div>
+      <div class="req-buttons">
+        <button class="btn-reject" onclick="rejectRequest()">Pass</button>
+        <button class="btn-accept" onclick="acceptRequest()">Accept</button>
+      </div>
+    </div>
+  </div>
+  <div class="driver-panel">
+    <div class="status-badge"><div class="status-dot"></div><div class="status-text">You're Online</div></div>
+    <div class="driver-stats">
+      <div class="d-stat"><div class="d-stat-val" id="d-updates">0</div><div class="d-stat-label">Updates</div></div>
+      <div class="d-stat"><div class="d-stat-val" id="d-time">0:00</div><div class="d-stat-label">Online</div></div>
+    </div>
+    <div class="waiting-text">Waiting for ride requests...</div>
+    <button class="btn-danger" onclick="goOffline()">Go Offline</button>
+  </div>
+</div>
+
+<!-- ============ DRIVER ACTIVE RIDE ============ -->
+<div id="driver-ride" class="screen">
+  <div id="driver-ride-map"></div>
+  <div class="driver-ride-panel">
+    <div class="match-driver">
+      <div class="match-avatar">📍</div>
+      <div><div class="match-name" id="dr-rider-name">Rider</div><div class="match-status">Heading to pickup</div></div>
+    </div>
+    <div class="eta-bar">
+      <div><div class="eta-label">Distance</div><div class="eta-val" id="dr-dist">--</div></div>
+      <div style="text-align:right"><div class="eta-label">ETA</div><div id="dr-eta" style="font-size:26px;font-weight:800;color:var(--primary)">--</div></div>
+    </div>
+    <button class="btn-primary" onclick="driverComplete()">Ride Complete</button>
+  </div>
+</div>
+
+<!-- ============ COMPLETED ============ -->
+<div id="completed" class="screen">
+  <div class="complete-emoji">🎉</div>
+  <div class="complete-title">Ride Complete!</div>
+  <div class="complete-sub">Thanks for using Wasselni. See you next time!</div>
+  <button class="btn-primary" style="max-width:280px" onclick="location.reload()">Back to Home</button>
+</div>
+
+<script>
+// ===== STATE =====
+let myLocation = null, myPhone = '', myName = '';
+let currentRideId = null, riderMap = null, trackMap = null, driverMap = null, driverRideMap = null;
+let driverMarker = null, pickupMarker = null, routeLine = null;
+let driverWatchId = null, driverStartTime = null, driverUpdates = 0, driverTimer = null;
+let pollInterval = null, driverPollInterval = null;
+let pendingRideId = null;
+
+// ===== NAV =====
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ===== UTILS =====
+function distKm(a, b) {
+  const R=6371,toR=d=>d*Math.PI/180;
+  const dLat=toR(b[0]-a[0]),dLng=toR(b[1]-a[1]);
+  const h=Math.sin(dLat/2)**2+Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+function makeMap(divId, center, zoom) {
+  const m = L.map(divId, { zoomControl: false, attributionControl: false }).setView(center, zoom || 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+  return m;
+}
+
+function addPickup(map, latlng) {
+  const icon = L.divIcon({ className:'', html:'<div class="pickup-pulse"></div>', iconSize:[20,20], iconAnchor:[10,10] });
+  return L.marker(latlng, { icon }).addTo(map);
+}
+
+function addTuktuk(map, latlng) {
+  const icon = L.divIcon({ className:'', html:'<div class="tuktuk-marker">🛺</div>', iconSize:[32,32], iconAnchor:[16,16] });
+  return L.marker(latlng, { icon }).addTo(map);
+}
+
+// ===== RIDER =====
+function initRider() {
+  navigator.geolocation.getCurrentPosition(pos => {
+    myLocation = [pos.coords.latitude, pos.coords.longitude];
+    if (!riderMap) {
+      riderMap = makeMap('rider-map', myLocation);
+      addPickup(riderMap, myLocation);
     }
-  }
-  if (cleaned > 0) console.log(`Stale cleanup: ${cleaned} driver(s) marked offline`);
-}, 2 * 60 * 1000);
-
-// ---- State ----
-const drivers = new Map();
-const rides = new Map();
-const pendingOffers = new Map();
-const activeDriverRide = new Map();
-let detectedBaseUrl = "";
-
-// ---- Startup diagnostics ----
-async function checkConfig() {
-  const tp = WHATSAPP_TOKEN ? `${WHATSAPP_TOKEN.slice(0,6)}...${WHATSAPP_TOKEN.slice(-4)} (${WHATSAPP_TOKEN.length} chars)` : "MISSING!";
-  console.log(`== DIAGNOSTICS ==`);
-  console.log(`PHONE_NUMBER_ID: ${PHONE_NUMBER_ID || "MISSING!"}`);
-  console.log(`WHATSAPP_TOKEN:  ${tp}`);
-  console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
-  console.log(`OLLAMA_API_KEY:  ${OLLAMA_API_KEY ? "set" : "not set — AI disabled"}`);
-  console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
-  try {
-    const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}`, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } });
-    const data = await res.json();
-    if (data.error) console.log(`TOKEN TEST FAILED: ${JSON.stringify(data.error)}`);
-    else console.log(`TOKEN TEST PASSED — phone: ${data.display_phone_number}, verified: ${data.verified_name}`);
-  } catch (e) { console.log(`TOKEN TEST ERROR: ${e.message}`); }
-  console.log(`=================`);
+    checkNearby();
+    setInterval(checkNearby, 15000);
+  }, () => {
+    document.getElementById('nearby-count').textContent = '⚠️ Please enable GPS to find nearby tuk-tuks';
+  }, { enableHighAccuracy: true });
 }
 
-// ---- Helpers ----
-function getBaseUrl(req) {
-  if (BASE_URL) return BASE_URL;
-  if (detectedBaseUrl) return detectedBaseUrl;
-  detectedBaseUrl = `${req.protocol}://${req.get("host")}`;
-  // Safety net: force HTTPS on known cloud hosts (GPS requires it)
-  if (detectedBaseUrl.startsWith("http://") && detectedBaseUrl.includes(".onrender.com")) {
-    detectedBaseUrl = detectedBaseUrl.replace("http://", "https://");
+async function checkNearby() {
+  if (!myLocation) return;
+  const data = await api(`/api/nearby?lat=${myLocation[0]}&lng=${myLocation[1]}`);
+  const el = document.getElementById('nearby-count');
+  if (data.count > 0) {
+    el.innerHTML = `<span class="nearby-dot"></span> ${data.count} tuk-tuk${data.count>1?'s':''} nearby`;
+    document.getElementById('find-btn').disabled = false;
+  } else {
+    el.textContent = 'No tuk-tuks nearby right now — try again soon';
   }
-  console.log(`Auto-detected BASE_URL: ${detectedBaseUrl}`);
-  return detectedBaseUrl;
 }
-function generateRideId() { return "ride_" + crypto.randomBytes(6).toString("hex"); }
 
-// ---- WhatsApp send ----
-async function sendText(to, body) {
-  const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", to, type: "text", text: { preview_url: true, body } }),
+async function requestRide() {
+  if (!myLocation) return alert('GPS not available');
+  myName = document.getElementById('rider-name').value || 'Rider';
+  myPhone = 'app_' + Math.random().toString(36).slice(2, 10);
+
+  showScreen('searching');
+  const data = await api('/api/ride/request', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ riderPhone: myPhone, riderName: myName, lat: myLocation[0], lng: myLocation[1] })
   });
-  if (!res.ok) console.error(`send failed to ${to}: ${await res.text()}`);
-  else console.log(`message sent to ${to}`);
-}
 
-async function sendLocation(to, lat, lng, name, address) {
-  const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}/messages`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ messaging_product: "whatsapp", to, type: "location", location: { latitude: lat, longitude: lng, name: name || "Location", address: address || "" } }),
-  });
-  if (!res.ok) console.error(`location send failed: ${await res.text()}`);
-}
-
-// ================= AI — two jobs: understand intent + polish responses =================
-
-// Job 1: Detect what the user wants (returns a single word)
-const INTENT_PROMPT = `You are an intent classifier for a tuk-tuk ride service in Lebanon.
-Users write in English, Arabic, or Arabizi (Lebanese Arabic in Latin script like "kifak", "baddé", "shu").
-Detect what the user wants. Reply with ONLY one word — the intent. Nothing else. No punctuation.
-
-ride — wants a tuk-tuk ("baddi tuktuk", "need a ride", "send me one", "بدي توكتوك", "tuktuk please")
-driver — wants to be a driver ("I want to drive", "بدي اشتغل", "sign me up")
-accept — accepting a ride ("yalla", "ok", "meshé", "ماشي", "sure", "I'll take it")
-reject — declining a ride ("no", "skip", "مش فاضي", "pass", "not now")
-cancel — cancel something ("cancel", "الغي", "never mind", "ma baddé")
-done — ride finished ("khalas", "arrived", "وصلت", "we're here", "done")
-offline — stop driving ("stop", "بدي وقف", "done for today", "offline")
-status — asking about their ride ("where's my driver", "any update", "وين السواق")
-help — greeting, question, or anything else ("hi", "مرحبا", "how much", "shu howe")
-
-Examples: "baddé tuktuk men dekwaneh" → ride | "yo where's my driver" → status | "مرحبا" → help | "yalla ok" → accept`;
-
-// Job 2: Polish bot responses to be warmer (only for key messages)
-const POLISH_PROMPT = `You are the voice of TukTuk, a tuk-tuk ride service in Lebanon.
-Rewrite the given bot message to sound warmer and more helpful. Add a brief explanation if useful.
-Rules:
-- English only
-- SHORT: 2-3 sentences max
-- Keep any links or phone numbers exactly as-is
-- Do NOT add false information
-- Reply with ONLY the rewritten message — nothing else
-- No preamble like "Here's a revised version"
-- No questions like "Would you like me to..."
-- No commentary or explanation of your changes
-- Just the final message text, ready to send to the user`;
-
-async function detectIntent(userMessage) {
-  if (!OLLAMA_API_KEY) return null;
-  try {
-    const res = await fetch("https://ollama.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL, max_tokens: 20, temperature: 0,
-        messages: [{ role: "system", content: INTENT_PROMPT }, { role: "user", content: userMessage }],
-      }),
-    });
-    if (!res.ok) { console.error(`AI intent error ${res.status}: ${await res.text()}`); return null; }
-    const data = await res.json();
-    const raw = (data.choices?.[0]?.message?.content || "")
-      .replace(/<think>[\s\S]*?<\/think>/g, "").trim().toLowerCase().replace(/[^a-z]/g, "");
-    console.log(`AI intent: "${raw}" for "${userMessage}"`);
-    return raw || null;
-  } catch (e) { console.error("AI intent error:", e.message); return null; }
-}
-
-async function polish(rawMessage, situation) {
-  if (!OLLAMA_API_KEY) return rawMessage;
-  try {
-    const res = await fetch("https://ollama.com/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL, max_tokens: 150, temperature: 0.5,
-        messages: [
-          { role: "system", content: POLISH_PROMPT },
-          { role: "user", content: `Situation: ${situation}\nOriginal: ${rawMessage}\n\nRewrite:` },
-        ],
-      }),
-    });
-    if (!res.ok) return rawMessage;
-    const data = await res.json();
-    const raw = (data.choices?.[0]?.message?.content || "")
-      .replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    // Strip AI commentary: remove preamble lines and trailing questions
-    let polished = raw
-      .replace(/^(here'?s?|okay|sure|of course|let me|i'?d be|absolutely)[^\n]*\n*/i, "")
-      .replace(/\n*(would you|want me|shall i|let me know|hope this|feel free)[^\n]*/i, "")
-      .replace(/^[""]|[""]$/g, "")
-      .trim();
-    if (polished.length > 10 && polished.length < 500) {
-      console.log(`Polished: "${polished.slice(0, 80)}..."`);
-      return polished;
-    }
-    return rawMessage;
-  } catch (e) { return rawMessage; }
-}
-
-// ================= WEBHOOK =================
-
-app.get("/webhook", (req, res) => {
-  const mode = req.query["hub.mode"], token = req.query["hub.verify_token"], challenge = req.query["hub.challenge"];
-  if (mode === "subscribe" && token === VERIFY_TOKEN) return res.status(200).send(challenge);
-  return res.sendStatus(403);
-});
-
-app.post("/webhook", async (req, res) => {
-  res.sendStatus(200);
-  try {
-    const value = req.body?.entry?.[0]?.changes?.[0]?.value;
-    const msg = value?.messages?.[0];
-    if (!msg) return;
-    const from = msg.from, name = value?.contacts?.[0]?.profile?.name || "there";
-    console.log(`Incoming ${msg.type} from ${from} (${name})`);
-    if (msg.type === "text") await handleText(from, name, msg.text.body.trim(), req);
-    else if (msg.type === "location") await handleLocation(from, name, { lat: msg.location.latitude, lng: msg.location.longitude }, req);
-  } catch (e) { console.error("handler error:", e); }
-});
-
-// ================= PAGES & APIs =================
-
-app.get("/driver", (req, res) => res.sendFile(path.join(__dirname, "public", "driver.html")));
-app.get("/track/:rideId", (req, res) => res.sendFile(path.join(__dirname, "public", "tracking.html")));
-
-app.post("/api/driver/location", (req, res) => {
-  const { phone, lat, lng } = req.body;
-  if (!phone || lat == null || lng == null) return res.json({ error: "missing" });
-  let driver = drivers.get(phone);
-  if (driver) { driver.location = { lat, lng }; driver.online = true; driver.lastGPS = Date.now(); }
-  else { drivers.set(phone, { phone, name: phone, online: true, location: { lat, lng }, lastGPS: Date.now() }); }
-  const rid = activeDriverRide.get(phone);
-  if (rid) { const r = rides.get(rid); if (r && r.status === "accepted") { r.driverLocation = { lat, lng }; r.lastUpdate = Date.now(); } }
-  res.json({ ok: true });
-});
-
-app.post("/api/driver/offline", (req, res) => {
-  const d = drivers.get(req.body.phone); if (d) d.online = false; res.json({ ok: true });
-});
-
-app.post("/api/track/:rideId/location", (req, res) => {
-  const ride = rides.get(req.params.rideId);
-  if (!ride || ride.status !== "accepted") return res.json({ error: "not active" });
-  const { lat, lng } = req.body;
-  ride.driverLocation = { lat, lng }; ride.lastUpdate = Date.now();
-  if (ride.acceptedBy) { const d = drivers.get(ride.acceptedBy); if (d) d.location = { lat, lng }; }
-  res.json({ ok: true });
-});
-
-app.get("/api/track/:rideId/status", (req, res) => {
-  const ride = rides.get(req.params.rideId);
-  if (!ride) return res.json({ error: "not found" });
-  res.json({ driverLocation: ride.driverLocation, riderLocation: ride.riderLocation, driverName: ride.driverName || "Driver", status: ride.status, lastUpdate: ride.lastUpdate });
-});
-
-// ================= MESSAGE HANDLERS =================
-
-async function handleText(from, name, text, req) {
-  const lower = text.toLowerCase();
-
-  // Fast path: exact keywords skip AI entirely (instant, free)
-  if (["accept", "yes", "ok", "y"].includes(lower)) return handleAccept(from, name, req);
-  if (["reject", "no", "n", "pass"].includes(lower)) return handleReject(from);
-  if (lower === "cancel") return handleCancel(from);
-  if (lower === "done") return handleDone(from);
-  if (["offline", "stop"].includes(lower)) {
-    const d = drivers.get(from);
-    if (d) d.online = false;
-    cleanupDriverOffer(from);
-    return sendText(from, `You're offline now. Send "online" when you're ready to drive again. 🛺`);
-  }
-  if (["driver", "online", "سائق"].includes(lower)) {
-    cleanupDriverOffer(from);
-    drivers.set(from, { phone: from, name, online: true, location: null, lastGPS: null });
-    const base = getBaseUrl(req);
-    const url = `${base}/driver?phone=${from}`;
-    return sendText(from,
-      `Welcome, ${name}! You're now a TukTuk driver 🛺\n\n📍 *Share your location now* (📎 → Location) so riders nearby can find you.\n\nFor automatic GPS tracking while you drive, tap here:\n${url}\n\nSend "offline" anytime to stop.`
-    );
-  }
-  if (["ride", "taxi", "tuktuk", "تكتك", "توكتوك"].includes(lower)) {
-    return sendText(from, `🛺 Share your *location* (📎 → Location) and I'll find you the nearest tuk-tuk!`);
-  }
-
-  // Try AI intent detection for everything else
-  const intent = await detectIntent(text);
-  console.log(`Resolved intent: ${intent || "none"}`);
-
-  // Route by intent (AI-detected or fallback)
-  switch (intent) {
-    case "ride":
-      return sendText(from, await polish(
-        `Share your location (📎 → Location) and I'll find you the nearest tuk-tuk!`,
-        "User wants a ride but hasn't shared their location yet"
-      ));
-
-    case "driver": {
-      cleanupDriverOffer(from);
-      drivers.set(from, { phone: from, name, online: true, location: null, lastGPS: null });
-      const base = getBaseUrl(req);
-      const url = `${base}/driver?phone=${from}`;
-      return sendText(from,
-        `Welcome, ${name}! 🛺\n\n📍 *Tap this link to go online:*\n${url}\n\nKeep the page open while you drive. You'll get ride requests here on WhatsApp.\n\nSend "offline" to stop.`
-      );
-    }
-
-    case "accept": return handleAccept(from, name, req);
-    case "reject": return handleReject(from);
-    case "cancel": return handleCancel(from);
-    case "done": return handleDone(from);
-
-    case "offline": {
-      const d = drivers.get(from);
-      if (d) d.online = false;
-      cleanupDriverOffer(from);
-      return sendText(from, `You're offline now. Send "online" when you're ready to drive again. 🛺`);
-    }
-
-    case "status": {
-      const activeRide = [...rides.values()].find(r => (r.riderPhone === from || r.acceptedBy === from) && (r.status === "pending" || r.status === "accepted"));
-      if (activeRide?.status === "accepted") {
-        return sendText(from, await polish(`Your ride is in progress. Your driver is on the way.`, "User is checking on their active ride"));
-      } else if (activeRide?.status === "pending") {
-        return sendText(from, await polish(`We're still looking for a driver for you. Hang tight!`, "User is waiting for a driver to accept"));
-      }
-      return sendText(from, await polish(`You don't have an active ride right now. Send your location to request one!`, "User asked about ride status but has no active ride"));
-    }
-
-    case "help":
-    default:
-      // Greeting or unrecognized — friendly help message
-      return sendText(from, await polish(
-        `Welcome to TukTuk! 🛺 Need a ride? Just send your location. Want to drive? Send "online". You can also send "cancel" or "done" during a ride.`,
-        "User greeted the bot or asked a general question"
-      ));
-  }
-}
-
-// ---- Rider sends location ----
-async function handleLocation(from, name, loc, req) {
-  const driver = drivers.get(from);
-  if (driver && driver.online) {
-    driver.location = loc;
-    const onlineCount = [...drivers.values()].filter(d => d.online && d.location).length;
-    return sendText(from, `✅ You're now visible to riders, ${name}! Location set. ${onlineCount} driver${onlineCount !== 1 ? "s" : ""} online.\n\nRe-share your location when you move to a new area. Ride requests will come here on WhatsApp.`);
-  }
-
-  const nearby = findNearbyDrivers(loc, [...drivers.values()], { maxKm: 5, limit: 3 });
-  if (nearby.length === 0) {
-    return sendText(from, await polish(
-      `No tuk-tuks available near you right now. Please try again in a few minutes.`,
-      "No drivers are online near the rider. This could be because it's a quiet time of day, or drivers haven't gone online in this area yet. The rider should try again soon."
-    ));
-  }
-
-  const rideId = generateRideId();
-  const ride = {
-    id: rideId, riderPhone: from, riderName: name, riderLocation: loc,
-    status: "pending", pingedDrivers: nearby.map(d => d.phone),
-    acceptedBy: null, driverName: null, driverLocation: null, lastUpdate: null, timer: null,
-  };
-  ride.timer = setTimeout(() => expireRide(rideId), RIDE_TIMEOUT_MS);
-  rides.set(rideId, ride);
-  for (const d of nearby) pendingOffers.set(d.phone, rideId);
-
-  await sendText(from, await polish(
-    `Looking for a tuk-tuk near you... asking ${nearby.length} driver${nearby.length > 1 ? "s" : ""}. You'll hear back shortly. Send "cancel" to cancel.`,
-    "We found nearby drivers and are asking them to accept the ride"
-  ));
-
-  for (const d of nearby) {
-    await sendText(d.phone, `🔔 *Ride request!*\nRider: ${name}\nDistance: ~${d.distanceKm.toFixed(1)} km\n\nReply *accept* to take it, or *reject* to pass.`);
-  }
-  console.log(`Ride ${rideId}: ${nearby.length} drivers pinged`);
-}
-
-// ---- Driver accepts ----
-async function handleAccept(driverPhone, driverName, req) {
-  const rideId = pendingOffers.get(driverPhone);
-  if (!rideId) return sendText(driverPhone, `No pending ride request for you right now.`);
-  const ride = rides.get(rideId);
-  if (!ride || ride.status !== "pending") { pendingOffers.delete(driverPhone); return sendText(driverPhone, `That ride was already taken or cancelled.`); }
-
-  ride.status = "accepted"; ride.acceptedBy = driverPhone; ride.driverName = driverName;
-  clearTimeout(ride.timer);
-  const driver = drivers.get(driverPhone);
-  if (driver?.location) ride.driverLocation = driver.location;
-  activeDriverRide.set(driverPhone, rideId);
-
-  const dist = driver?.location ? distanceKm(ride.riderLocation, driver.location) : null;
-  let etaText = "", distText = "";
-  if (dist !== null) {
-    distText = `~${dist.toFixed(1)} km away`;
-    const etaMin = Math.max(2, Math.round((dist * 1.4) / 20 * 60));
-    etaText = `\n⏱ Estimated arrival: *~${etaMin} minutes*`;
-  }
-
-  const base = getBaseUrl(req);
-  const riderTrackUrl = `${base}/track/${rideId}?role=rider`;
-
-  await sendText(ride.riderPhone, await polish(
-    `Driver found! Your driver: ${driverName} ${distText}${etaText}\n\nTrack your tuk-tuk live: ${riderTrackUrl}\n\nContact driver: wa.me/${driverPhone}\nSend "cancel" to cancel or "done" when you arrive.`,
-    "A driver accepted the ride. The rider can now track them live."
-  ));
-
-  await sendText(driverPhone, `✅ *Ride confirmed!*\n\nRider: ${ride.riderName} ${distText}${etaText}\nContact: wa.me/${ride.riderPhone}\nSend "done" when complete.`);
-  await sendLocation(driverPhone, ride.riderLocation.lat, ride.riderLocation.lng, `📍 ${ride.riderName}'s pickup`, "Tap for directions");
-
-  for (const p of ride.pingedDrivers) { if (p !== driverPhone) { pendingOffers.delete(p); await sendText(p, `That ride was taken by another driver.`); } }
-  pendingOffers.delete(driverPhone);
-  console.log(`Ride ${rideId}: accepted by ${driverPhone}`);
-}
-
-// ---- Reject ----
-async function handleReject(driverPhone) {
-  const rideId = pendingOffers.get(driverPhone);
-  if (!rideId) return sendText(driverPhone, `No pending ride request for you right now.`);
-  pendingOffers.delete(driverPhone);
-  await sendText(driverPhone, `OK, skipped. You'll get the next one.`);
-  const ride = rides.get(rideId);
-  if (ride && ride.status === "pending") {
-    const remaining = ride.pingedDrivers.filter(p => pendingOffers.get(p) === rideId);
-    if (remaining.length === 0) {
-      ride.status = "rejected"; clearTimeout(ride.timer);
-      await sendText(ride.riderPhone, await polish(
-        `No drivers accepted your ride right now. Please try again in a minute.`,
-        "All nearby drivers declined or didn't respond. The rider should try again — more drivers may come online."
-      ));
-    }
-  }
-}
-
-// ---- Cancel ----
-async function handleCancel(from) {
-  const riderRide = [...rides.values()].find(r => r.riderPhone === from && (r.status === "pending" || r.status === "accepted"));
-  if (riderRide) {
-    const wasAccepted = riderRide.status === "accepted";
-    riderRide.status = "cancelled"; clearTimeout(riderRide.timer);
-    for (const dp of riderRide.pingedDrivers) { if (pendingOffers.get(dp) === riderRide.id) pendingOffers.delete(dp); }
-    if (wasAccepted && riderRide.acceptedBy) { activeDriverRide.delete(riderRide.acceptedBy); await sendText(riderRide.acceptedBy, `❌ The rider cancelled. You're back online for new requests.`); }
-    return sendText(from, `Ride cancelled. Send a new location whenever you need a ride.`);
-  }
-  const driverRideId = activeDriverRide.get(from);
-  if (driverRideId) {
-    const ride = rides.get(driverRideId);
-    if (ride && ride.status === "accepted") {
-      ride.status = "cancelled"; activeDriverRide.delete(from);
-      await sendText(ride.riderPhone, await polish(`Your driver had to cancel. Send your location to find another tuk-tuk.`, "The driver cancelled on the rider. Encourage them to try again."));
-      return sendText(from, `Ride cancelled. You're back online.`);
-    }
-  }
-  return sendText(from, `You don't have an active ride to cancel.`);
-}
-
-// ---- Done ----
-async function handleDone(from) {
-  const riderRide = [...rides.values()].find(r => r.riderPhone === from && r.status === "accepted");
-  if (riderRide) {
-    riderRide.status = "completed";
-    if (riderRide.acceptedBy) activeDriverRide.delete(riderRide.acceptedBy);
-    await sendText(from, await polish(`Ride complete! Thanks for using TukTuk.`, "Ride finished successfully. Thank the rider warmly."));
-    if (riderRide.acceptedBy) await sendText(riderRide.acceptedBy, `✅ Ride completed. You're back online.`);
+  if (data.error) {
+    document.getElementById('search-sub').textContent = data.message || 'No drivers found';
+    setTimeout(() => showScreen('rider-home'), 3000);
     return;
   }
-  const driverRideId = activeDriverRide.get(from);
-  if (driverRideId) {
-    const ride = rides.get(driverRideId);
-    if (ride && ride.status === "accepted") {
-      ride.status = "completed"; activeDriverRide.delete(from);
-      await sendText(from, `✅ Ride completed. You're back online.`);
-      await sendText(ride.riderPhone, await polish(`Ride complete! Thanks for using TukTuk.`, "Ride finished. Thank the rider."));
-      return;
+
+  currentRideId = data.rideId;
+  document.getElementById('search-sub').textContent = `Asking ${data.driversFound} driver${data.driversFound>1?'s':''}...`;
+
+  // Poll for ride status
+  pollInterval = setInterval(async () => {
+    const ride = await api(`/api/ride/${currentRideId}`);
+    if (ride.status === 'accepted') {
+      clearInterval(pollInterval);
+      showMatched(ride);
+    } else if (ride.status === 'expired' || ride.status === 'rejected' || ride.status === 'cancelled') {
+      clearInterval(pollInterval);
+      document.getElementById('search-sub').textContent = 'No drivers accepted — try again';
+      setTimeout(() => showScreen('rider-home'), 3000);
     }
-  }
-  return sendText(from, `You don't have an active ride to complete.`);
+  }, 2000);
 }
 
-// ---- Expire ----
-async function expireRide(rideId) {
-  const ride = rides.get(rideId);
-  if (!ride || ride.status !== "pending") return;
-  ride.status = "expired";
-  for (const dp of ride.pingedDrivers) { if (pendingOffers.get(dp) === rideId) pendingOffers.delete(dp); }
-  await sendText(ride.riderPhone, await polish(
-    `No driver accepted in time. Send your location to try again.`,
-    "The 3-minute timer ran out with no driver accepting. Encourage the rider to try again."
-  ));
+function cancelSearch() {
+  clearInterval(pollInterval);
+  if (currentRideId) api(`/api/ride/${currentRideId}/cancel`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('rider-home');
 }
 
-function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (rid) pendingOffers.delete(phone); }
+function showMatched(ride) {
+  showScreen('matched');
+  document.getElementById('match-name').textContent = ride.driverName || 'Your Driver';
 
-// ================= APP API (PWA uses these instead of WhatsApp) =================
+  const riderLL = [ride.riderLocation.lat, ride.riderLocation.lng];
+  const driverLL = ride.driverLocation ? [ride.driverLocation.lat, ride.driverLocation.lng] : riderLL;
 
-// Serve the main app
-app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.html")));
-
-// Count nearby drivers (rider sees this on home screen)
-app.get("/api/nearby", (req, res) => {
-  const { lat, lng } = req.query;
-  if (!lat || !lng) return res.json({ count: 0, drivers: [] });
-  const nearby = findNearbyDrivers({ lat: +lat, lng: +lng }, [...drivers.values()], { maxKm: 5, limit: 10 });
-  res.json({ count: nearby.length, drivers: nearby.map(d => ({ name: d.name, distanceKm: d.distanceKm })) });
-});
-
-// Rider requests a ride via the app
-app.post("/api/ride/request", (req, res) => {
-  const { riderPhone, riderName, lat, lng } = req.body;
-  if (!riderPhone || !lat || !lng) return res.json({ error: "missing fields" });
-
-  const nearby = findNearbyDrivers({ lat, lng }, [...drivers.values()], { maxKm: 5, limit: 3 });
-  if (nearby.length === 0) return res.json({ error: "no_drivers", message: "No tuk-tuks available nearby" });
-
-  const rideId = generateRideId();
-  const ride = {
-    id: rideId, riderPhone, riderName: riderName || "Rider", riderLocation: { lat, lng },
-    status: "pending", pingedDrivers: nearby.map(d => d.phone),
-    acceptedBy: null, driverName: null, driverLocation: null, lastUpdate: null, timer: null,
-  };
-  ride.timer = setTimeout(() => {
-    if (ride.status === "pending") { ride.status = "expired"; cleanupRideOffers(rideId); }
-  }, RIDE_TIMEOUT_MS);
-  rides.set(rideId, ride);
-  for (const d of nearby) pendingOffers.set(d.phone, rideId);
-
-  console.log(`[APP] Ride ${rideId}: ${nearby.length} drivers pinged for ${riderPhone}`);
-  res.json({ rideId, driversFound: nearby.length });
-});
-
-// Get ride status (rider and driver both poll this)
-app.get("/api/ride/:rideId", (req, res) => {
-  const ride = rides.get(req.params.rideId);
-  if (!ride) return res.json({ error: "not found" });
-
-  const result = {
-    id: ride.id, status: ride.status,
-    riderName: ride.riderName, riderLocation: ride.riderLocation,
-    driverName: ride.driverName, driverPhone: ride.acceptedBy,
-    driverLocation: ride.driverLocation, lastUpdate: ride.lastUpdate,
-  };
-
-  // Add ETA if driver location known
-  if (ride.driverLocation && ride.riderLocation) {
-    const dist = distanceKm(ride.riderLocation, ride.driverLocation);
-    result.distanceKm = dist;
-    result.etaMinutes = Math.max(2, Math.round((dist * 1.4) / 20 * 60));
+  if (!trackMap) {
+    trackMap = makeMap('track-map', riderLL);
+  } else {
+    trackMap.setView(riderLL, 15);
   }
-  res.json(result);
-});
 
-// Driver polls for pending ride requests
-app.get("/api/driver/:phone/requests", (req, res) => {
-  const phone = req.params.phone;
-  const rideId = pendingOffers.get(phone);
-  if (!rideId) return res.json({ pending: null });
+  pickupMarker = addPickup(trackMap, riderLL);
+  driverMarker = addTuktuk(trackMap, driverLL);
+  routeLine = L.polyline([driverLL, riderLL], { color:'#f2994a', weight:3, dashArray:'8,8', opacity:0.7 }).addTo(trackMap);
+  trackMap.fitBounds([driverLL, riderLL], { padding:[60,60] });
 
-  const ride = rides.get(rideId);
-  if (!ride || ride.status !== "pending") { pendingOffers.delete(phone); return res.json({ pending: null }); }
-
-  const driver = drivers.get(phone);
-  const dist = driver?.location ? distanceKm(ride.riderLocation, driver.location) : null;
-
-  res.json({
-    pending: {
-      rideId: ride.id,
-      riderName: ride.riderName,
-      distanceKm: dist ? +dist.toFixed(1) : null,
-      etaMinutes: dist ? Math.max(2, Math.round((dist * 1.4) / 20 * 60)) : null,
+  // Poll tracking
+  pollInterval = setInterval(async () => {
+    const r = await api(`/api/ride/${currentRideId}`);
+    if (r.status === 'completed' || r.status === 'cancelled') { clearInterval(pollInterval); showScreen('completed'); return; }
+    if (r.driverLocation) {
+      const dl = [r.driverLocation.lat, r.driverLocation.lng];
+      driverMarker.setLatLng(dl);
+      routeLine.setLatLngs([dl, riderLL]);
+      if (r.distanceKm !== undefined) {
+        const m = Math.round(r.distanceKm * 1000);
+        document.getElementById('match-dist').textContent = m < 1000 ? `${m} m` : `${r.distanceKm.toFixed(1)} km`;
+        document.getElementById('match-eta').textContent = r.etaMinutes || '--';
+        if (m < 100) {
+          document.getElementById('arrived-msg').classList.add('show');
+          document.getElementById('match-status').textContent = 'Arrived!';
+        } else if (r.etaMinutes <= 2) {
+          document.getElementById('match-status').textContent = 'Almost there!';
+        }
+      }
     }
+  }, 3000);
+}
+
+function cancelRide() {
+  clearInterval(pollInterval);
+  if (currentRideId) api(`/api/ride/${currentRideId}/cancel`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('rider-home');
+}
+
+function completeRide() {
+  clearInterval(pollInterval);
+  if (currentRideId) api(`/api/ride/${currentRideId}/complete`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('completed');
+}
+
+// ===== DRIVER =====
+function startDriver() {
+  myPhone = document.getElementById('driver-phone').value.replace(/[\s\-\+]/g, '');
+  myName = document.getElementById('driver-name').value || 'Driver';
+  if (!myPhone) return alert('Please enter your phone number');
+
+  // Register driver
+  api('/api/driver/location', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: myPhone, lat: 0, lng: 0 })
   });
-});
 
-// Driver accepts ride via app
-app.post("/api/ride/:rideId/accept", (req, res) => {
-  const { driverPhone, driverName } = req.body;
-  const ride = rides.get(req.params.rideId);
-  if (!ride || ride.status !== "pending") return res.json({ error: "ride unavailable" });
+  showScreen('driver-online');
 
-  ride.status = "accepted"; ride.acceptedBy = driverPhone; ride.driverName = driverName || "Driver";
-  clearTimeout(ride.timer);
-  const driver = drivers.get(driverPhone);
-  if (driver?.location) ride.driverLocation = driver.location;
-  activeDriverRide.set(driverPhone, ride.id);
+  if (!driverMap) driverMap = makeMap('driver-map', [33.89, 35.51], 13);
 
-  // Clean up other drivers
-  for (const p of ride.pingedDrivers) { if (p !== driverPhone) pendingOffers.delete(p); }
-  pendingOffers.delete(driverPhone);
+  // Start GPS
+  driverWatchId = navigator.geolocation.watchPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    myLocation = [lat, lng];
 
-  console.log(`[APP] Ride ${ride.id}: accepted by ${driverPhone}`);
-  res.json({ success: true, riderName: ride.riderName, riderLocation: ride.riderLocation });
-});
+    if (!driverStartTime) {
+      driverStartTime = Date.now();
+      driverTimer = setInterval(updateDriverTimer, 1000);
+    }
 
-// Driver rejects ride via app
-app.post("/api/ride/:rideId/reject", (req, res) => {
-  const { driverPhone } = req.body;
-  pendingOffers.delete(driverPhone);
-  const ride = rides.get(req.params.rideId);
-  if (ride && ride.status === "pending") {
-    const remaining = ride.pingedDrivers.filter(p => pendingOffers.get(p) === ride.id);
-    if (remaining.length === 0) { ride.status = "rejected"; clearTimeout(ride.timer); }
-  }
-  res.json({ success: true });
-});
+    // Update map
+    if (driverMarker) driverMarker.setLatLng([lat, lng]);
+    else { driverMarker = addTuktuk(driverMap, [lat, lng]); driverMap.setView([lat, lng], 15); }
 
-// Cancel ride via app
-app.post("/api/ride/:rideId/cancel", (req, res) => {
-  const ride = rides.get(req.params.rideId);
-  if (!ride) return res.json({ error: "not found" });
-  ride.status = "cancelled"; clearTimeout(ride.timer);
-  cleanupRideOffers(ride.id);
-  if (ride.acceptedBy) activeDriverRide.delete(ride.acceptedBy);
-  res.json({ success: true });
-});
+    // Send to server (throttled)
+    driverUpdates++;
+    document.getElementById('d-updates').textContent = driverUpdates;
+    api('/api/driver/location', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ phone: myPhone, lat, lng })
+    });
+  }, err => {
+    alert('GPS error — please enable location services');
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
 
-// Complete ride via app
-app.post("/api/ride/:rideId/complete", (req, res) => {
-  const ride = rides.get(req.params.rideId);
-  if (!ride) return res.json({ error: "not found" });
-  ride.status = "completed";
-  if (ride.acceptedBy) activeDriverRide.delete(ride.acceptedBy);
-  res.json({ success: true });
-});
-
-// Get active ride for a driver
-app.get("/api/driver/:phone/active", (req, res) => {
-  const rideId = activeDriverRide.get(req.params.phone);
-  if (!rideId) return res.json({ active: null });
-  const ride = rides.get(rideId);
-  if (!ride || ride.status !== "accepted") return res.json({ active: null });
-  res.json({ active: { rideId: ride.id, riderName: ride.riderName, riderLocation: ride.riderLocation } });
-});
-
-function cleanupRideOffers(rideId) {
-  for (const [phone, rid] of pendingOffers) { if (rid === rideId) pendingOffers.delete(phone); }
+  // Poll for ride requests
+  driverPollInterval = setInterval(checkForRequests, 3000);
 }
 
-// ---- Start ----
-app.listen(PORT, () => { console.log(`Tuk-tuk bot listening on :${PORT}`); checkConfig(); });
+function updateDriverTimer() {
+  if (!driverStartTime) return;
+  const s = Math.floor((Date.now() - driverStartTime) / 1000);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  document.getElementById('d-time').textContent = h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+    : `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+async function checkForRequests() {
+  const data = await api(`/api/driver/${myPhone}/requests`);
+  if (data.pending) {
+    pendingRideId = data.pending.rideId;
+    const detail = data.pending.distanceKm
+      ? `${data.pending.riderName} — ${data.pending.distanceKm} km away (~${data.pending.etaMinutes} min)`
+      : `${data.pending.riderName} — nearby`;
+    document.getElementById('req-detail').textContent = detail;
+    document.getElementById('request-popup').classList.add('show');
+  }
+}
+
+async function acceptRequest() {
+  document.getElementById('request-popup').classList.remove('show');
+  clearInterval(driverPollInterval);
+
+  const data = await api(`/api/ride/${pendingRideId}/accept`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ driverPhone: myPhone, driverName: myName })
+  });
+
+  if (data.success) {
+    currentRideId = pendingRideId;
+    showDriverRide(data.riderName, data.riderLocation);
+  }
+}
+
+async function rejectRequest() {
+  document.getElementById('request-popup').classList.remove('show');
+  if (pendingRideId) {
+    await api(`/api/ride/${pendingRideId}/reject`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ driverPhone: myPhone })
+    });
+  }
+  pendingRideId = null;
+}
+
+function showDriverRide(riderName, riderLoc) {
+  showScreen('driver-ride');
+  document.getElementById('dr-rider-name').textContent = riderName;
+
+  const riderLL = [riderLoc.lat, riderLoc.lng];
+  if (!driverRideMap) driverRideMap = makeMap('driver-ride-map', riderLL);
+  else driverRideMap.setView(riderLL, 15);
+
+  const pickup = addPickup(driverRideMap, riderLL);
+  let myMarker = null;
+
+  // Keep tracking driver GPS and showing route
+  const trackInterval = setInterval(async () => {
+    const r = await api(`/api/ride/${currentRideId}`);
+    if (r.status !== 'accepted') { clearInterval(trackInterval); return; }
+    if (myLocation) {
+      if (myMarker) myMarker.setLatLng(myLocation);
+      else { myMarker = addTuktuk(driverRideMap, myLocation); driverRideMap.fitBounds([myLocation, riderLL], {padding:[60,60]}); }
+      if (routeLine) routeLine.setLatLngs([myLocation, riderLL]);
+      else routeLine = L.polyline([myLocation, riderLL], {color:'#f2994a',weight:3,dashArray:'8,8',opacity:0.7}).addTo(driverRideMap);
+
+      const km = distKm(myLocation, riderLL);
+      const m = Math.round(km * 1000);
+      document.getElementById('dr-dist').textContent = m < 1000 ? `${m}m` : `${km.toFixed(1)}km`;
+      document.getElementById('dr-eta').textContent = `${Math.max(1, Math.round((km*1.4)/20*60))}`;
+    }
+  }, 3000);
+}
+
+async function driverComplete() {
+  if (currentRideId) await api(`/api/ride/${currentRideId}/complete`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('completed');
+}
+
+function goOffline() {
+  if (driverWatchId) { navigator.geolocation.clearWatch(driverWatchId); driverWatchId = null; }
+  if (driverTimer) clearInterval(driverTimer);
+  if (driverPollInterval) clearInterval(driverPollInterval);
+  api('/api/driver/offline', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone:myPhone}) });
+  showScreen('welcome');
+}
+
+// Register service worker
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body>
+</html>
