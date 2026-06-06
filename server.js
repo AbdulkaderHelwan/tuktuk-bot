@@ -18,6 +18,7 @@ const {
   VERIFY_TOKEN,
   OLLAMA_API_KEY,
   OLLAMA_MODEL = "gemma3:4b",
+  RESEND_API_KEY,
   PORT = 3000,
   BASE_URL = "",
 } = process.env;
@@ -56,6 +57,7 @@ async function checkConfig() {
   console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
   console.log(`OLLAMA_API_KEY:  ${OLLAMA_API_KEY ? "set" : "not set — AI disabled"}`);
   console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
+  console.log(`RESEND_API_KEY:  ${RESEND_API_KEY ? "set — emails will be sent" : "not set — codes will print to console"}`);
   try {
     const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}`, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } });
     const data = await res.json();
@@ -475,6 +477,74 @@ async function expireRide(rideId) {
 }
 
 function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (rid) pendingOffers.delete(phone); }
+
+// ================= AUTH (Email + 6-digit code via Resend) =================
+
+const verificationCodes = new Map(); // email -> { code, expiresAt }
+const sessions = new Map();           // token -> { email, name, createdAt }
+
+async function sendVerificationEmail(email, code) {
+  if (!RESEND_API_KEY) {
+    console.log(`[NO RESEND KEY] Verification code for ${email}: ${code}`);
+    return true; // pretend success in dev mode
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "Wasselni <onboarding@resend.dev>",
+        to: email,
+        subject: `Your Wasselni code: ${code}`,
+        html: `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#1a1a2e;color:#fff;border-radius:16px">
+            <div style="font-size:48px;text-align:center;margin-bottom:8px">🛺</div>
+            <h1 style="text-align:center;color:#F2C94C;margin:0 0 8px;font-size:28px">Wasselni</h1>
+            <p style="text-align:center;color:#8a8aa0;margin:0 0 32px;font-size:14px">Your nearest tuk-tuk, one tap away</p>
+            <p style="font-size:16px;margin-bottom:16px">Your verification code is:</p>
+            <div style="background:linear-gradient(135deg,#F2994A,#F2C94C);color:#1a1a2e;font-size:36px;font-weight:bold;letter-spacing:8px;padding:24px;text-align:center;border-radius:12px;margin:16px 0">${code}</div>
+            <p style="color:#8a8aa0;font-size:13px;margin-top:24px">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
+          </div>`,
+      }),
+    });
+    if (!res.ok) { console.error("Resend failed:", await res.text()); return false; }
+    console.log(`Verification code sent to ${email}`);
+    return true;
+  } catch (e) { console.error("Email send error:", e.message); return false; }
+}
+
+app.post("/api/auth/request-code", async (req, res) => {
+  const { email } = req.body;
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.json({ error: "invalid email" });
+  const code = Math.floor(100000 + Math.random() * 900000).toString();
+  verificationCodes.set(email.toLowerCase(), { code, expiresAt: Date.now() + 10 * 60 * 1000 });
+  const sent = await sendVerificationEmail(email, code);
+  res.json({ success: sent });
+});
+
+app.post("/api/auth/verify", (req, res) => {
+  const { email, code, name } = req.body;
+  if (!email || !code) return res.json({ error: "missing fields" });
+  const emailKey = email.toLowerCase();
+  const stored = verificationCodes.get(emailKey);
+  if (!stored) return res.json({ error: "no code requested" });
+  if (Date.now() > stored.expiresAt) { verificationCodes.delete(emailKey); return res.json({ error: "code expired" }); }
+  if (stored.code !== code.toString()) return res.json({ error: "invalid code" });
+  verificationCodes.delete(emailKey);
+  const token = crypto.randomBytes(24).toString("hex");
+  const finalName = name || emailKey.split("@")[0];
+  sessions.set(token, { email: emailKey, name: finalName, createdAt: Date.now() });
+  console.log(`User verified: ${emailKey}`);
+  res.json({ success: true, token, email: emailKey, name: finalName });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return res.json({ error: "not logged in" });
+  const session = sessions.get(token);
+  if (!session) return res.json({ error: "invalid session" });
+  res.json({ email: session.email, name: session.name });
+});
 
 // ================= APP API (PWA uses these instead of WhatsApp) =================
 
