@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.json">
+<title>Wasselni 🛺</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#1a1a2e;--surface:#16213e;--primary:#F2994A;--accent:#F2C94C;--success:#27AE60;--danger:#E74C3C;--text:#fff;--muted:#8a8aa0;--card:rgba(255,255,255,0.06);--radius:16px}
+body{font-family:'Rubik',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;min-height:100dvh;overflow-x:hidden}
+.screen{display:none;min-height:100vh;min-height:100dvh;flex-direction:column}
+.screen.active{display:flex}
+button{font-family:'Rubik',sans-serif;cursor:pointer;border:none;outline:none;-webkit-tap-highlight-color:transparent}
+.btn-primary{background:linear-gradient(135deg,var(--primary),var(--accent));color:var(--bg);border-radius:var(--radius);padding:18px 32px;font-size:17px;font-weight:700;width:100%;box-shadow:0 4px 24px rgba(242,153,74,0.3);transition:transform .15s}
+.btn-primary:active{transform:scale(.96)}
+.btn-outline{background:var(--card);color:var(--text);border:1px solid rgba(255,255,255,0.1);border-radius:var(--radius);padding:16px 32px;font-size:16px;font-weight:600;width:100%}
+.btn-danger{background:rgba(231,76,60,0.15);color:var(--danger);border:1px solid rgba(231,76,60,0.2);border-radius:12px;padding:14px;font-size:14px;font-weight:600;width:100%}
+input{font-family:'Rubik',sans-serif;background:var(--surface);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:14px 16px;font-size:16px;color:var(--text);width:100%;outline:none}
+input::placeholder{color:var(--muted)}
+input:focus{border-color:var(--primary)}
+
+/* Welcome */
+#welcome{align-items:center;justify-content:center;padding:32px;text-align:center;background:radial-gradient(circle at 50% 30%,#16213e 0%,#1a1a2e 70%)}
+.welcome-logo{font-size:80px;margin-bottom:8px;filter:drop-shadow(0 4px 20px rgba(242,153,74,0.3))}
+.welcome-title{font-size:36px;font-weight:900;background:linear-gradient(135deg,var(--primary),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px;letter-spacing:-1px}
+.welcome-sub{color:var(--muted);font-size:14px;margin-bottom:40px}
+.role-buttons{display:flex;flex-direction:column;gap:12px;width:100%;max-width:320px}
+.role-btn{display:flex;align-items:center;gap:16px;padding:20px;border-radius:var(--radius);background:var(--card);border:1px solid rgba(255,255,255,0.06);text-align:left;color:var(--text);transition:border-color .2s}
+.role-btn:active{border-color:var(--primary)}
+.role-icon{font-size:36px;flex-shrink:0}
+.role-label{font-weight:700;font-size:16px}
+.role-desc{font-size:12px;color:var(--muted);margin-top:2px}
+
+/* Rider */
+#rider-home{position:relative}
+#rider-map{flex:1;min-height:0}
+.rider-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 32px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+.rider-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.rider-header .logo{font-size:28px}
+.rider-header .name{font-size:20px;font-weight:800;color:var(--accent)}
+.nearby-count{font-size:13px;color:var(--muted);margin-bottom:16px}
+.nearby-dot{display:inline-block;width:8px;height:8px;background:var(--success);border-radius:50%;margin-right:4px;animation:blink 1.5s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* Searching */
+#searching{align-items:center;justify-content:center;padding:32px;text-align:center}
+.search-anim{font-size:72px;animation:bounce 1s ease infinite}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+.search-text{font-size:18px;font-weight:600;margin:20px 0 8px}
+.search-sub{color:var(--muted);font-size:14px;margin-bottom:32px}
+
+/* Matched / Tracking */
+#matched{position:relative}
+#track-map{flex:1;min-height:0}
+.match-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 28px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+.match-driver{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.match-avatar{width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,var(--primary),var(--accent));display:flex;align-items:center;justify-content:center;font-size:24px}
+.match-name{font-weight:700;font-size:17px}
+.match-status{font-size:13px;color:var(--muted)}
+.eta-bar{display:flex;justify-content:space-between;background:var(--surface);border-radius:12px;padding:14px 16px;margin-bottom:14px}
+.eta-val{font-size:26px;font-weight:800;color:var(--primary)}
+.eta-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.arrived-msg{display:none;background:linear-gradient(135deg,var(--success),#2ecc71);text-align:center;padding:14px;border-radius:12px;font-weight:700;font-size:16px;margin-bottom:12px;animation:pop .4s ease}
+.arrived-msg.show{display:block}
+@keyframes pop{0%{transform:scale(.8);opacity:0}100%{transform:scale(1);opacity:1}}
+
+/* Driver */
+#driver-setup{align-items:center;justify-content:center;padding:32px;text-align:center}
+.setup-emoji{font-size:64px;margin-bottom:16px}
+.setup-title{font-size:22px;font-weight:800;color:var(--accent);margin-bottom:6px}
+.setup-sub{color:var(--muted);font-size:14px;margin-bottom:24px;max-width:300px}
+.setup-input{margin-bottom:16px;max-width:300px}
+#driver-online{position:relative}
+#driver-map{flex:1;min-height:0}
+.driver-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 28px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+.status-badge{display:flex;align-items:center;gap:8px;margin-bottom:14px}
+.status-dot{width:10px;height:10px;border-radius:50%;background:var(--success);animation:blink 1.5s infinite}
+.status-text{font-weight:700;font-size:16px;color:var(--success)}
+.driver-stats{display:flex;justify-content:space-around;background:var(--surface);border-radius:12px;padding:12px;margin-bottom:14px}
+.d-stat{text-align:center}
+.d-stat-val{font-size:20px;font-weight:800;color:var(--accent)}
+.d-stat-label{font-size:10px;color:var(--muted);text-transform:uppercase}
+.waiting-text{text-align:center;color:var(--muted);font-size:13px;margin-bottom:14px}
+
+/* Ride Request Popup */
+.request-popup{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:2000;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;padding:24px}
+.request-popup.show{display:flex}
+.request-card{background:var(--bg);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px;width:100%;max-width:340px;text-align:center;animation:pop .3s ease}
+.req-emoji{font-size:48px;margin-bottom:12px}
+.req-title{font-size:18px;font-weight:700;margin-bottom:4px}
+.req-detail{color:var(--muted);font-size:14px;margin-bottom:20px}
+.req-buttons{display:flex;gap:12px}
+.req-buttons button{flex:1;padding:16px;border-radius:12px;font-weight:700;font-size:16px}
+.btn-accept{background:var(--success);color:#fff}
+.btn-reject{background:var(--surface);color:var(--muted);border:1px solid rgba(255,255,255,0.1)}
+
+/* Driver active ride */
+#driver-ride{position:relative}
+#driver-ride-map{flex:1;min-height:0}
+.driver-ride-panel{position:fixed;bottom:0;left:0;right:0;z-index:1000;background:var(--bg);border-radius:24px 24px 0 0;padding:20px 20px 28px;box-shadow:0 -4px 30px rgba(0,0,0,0.4)}
+
+/* Completed */
+#completed{align-items:center;justify-content:center;padding:32px;text-align:center}
+.complete-emoji{font-size:72px;margin-bottom:16px}
+.complete-title{font-size:24px;font-weight:800;color:var(--success);margin-bottom:8px}
+.complete-sub{color:var(--muted);font-size:14px;margin-bottom:32px;max-width:280px}
+
+/* Leaflet overrides */
+.leaflet-control-attribution{display:none!important}
+.pickup-pulse{width:20px;height:20px;background:var(--success);border:3px solid #fff;border-radius:50%;box-shadow:0 0 0 rgba(39,174,96,0.4);animation:pulse 2s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(39,174,96,0.5)}70%{box-shadow:0 0 0 15px rgba(39,174,96,0)}100%{box-shadow:0 0 0 0 rgba(39,174,96,0)}}
+.tuktuk-marker{font-size:32px;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.3))}
+</style>
+</head>
+<body>
+
+<!-- ============ WELCOME ============ -->
+<div id="welcome" class="screen active">
+  <div class="welcome-logo">🛺</div>
+  <div class="welcome-title">Wasselni</div>
+  <div class="welcome-sub">Your nearest tuk-tuk, one tap away</div>
+  <div class="role-buttons">
+    <button class="role-btn" onclick="showScreen('rider-home'); initRider()">
+      <div class="role-icon">📍</div>
+      <div><div class="role-label">I need a ride</div><div class="role-desc">Find a tuk-tuk near you</div></div>
+    </button>
+    <button class="role-btn" onclick="showScreen('driver-setup')">
+      <div class="role-icon">🛺</div>
+      <div><div class="role-label">I'm a driver</div><div class="role-desc">Go online and get ride requests</div></div>
+    </button>
+  </div>
+</div>
+
+<!-- ============ RIDER HOME ============ -->
+<div id="rider-home" class="screen">
+  <div id="rider-map"></div>
+  <div class="rider-panel">
+    <div class="rider-header"><div class="logo">🛺</div><div class="name">Wasselni</div></div>
+    <div class="nearby-count" id="nearby-count">Looking for drivers...</div>
+    <div style="margin-bottom:12px">
+      <input id="rider-name" placeholder="Your name (optional)" autocomplete="name">
+    </div>
+    <button class="btn-primary" id="find-btn" onclick="requestRide()">Find a TukTuk</button>
+  </div>
+</div>
+
+<!-- ============ SEARCHING ============ -->
+<div id="searching" class="screen">
+  <div class="search-anim">🛺</div>
+  <div class="search-text">Looking for a tuk-tuk...</div>
+  <div class="search-sub" id="search-sub">Asking nearby drivers</div>
+  <button class="btn-outline" style="max-width:200px" onclick="cancelSearch()">Cancel</button>
+</div>
+
+<!-- ============ MATCHED / TRACKING ============ -->
+<div id="matched" class="screen">
+  <div id="track-map"></div>
+  <div class="match-panel">
+    <div class="arrived-msg" id="arrived-msg">🎉 Your tuk-tuk is here!</div>
+    <div class="match-driver">
+      <div class="match-avatar">🛺</div>
+      <div><div class="match-name" id="match-name">Driver</div><div class="match-status" id="match-status">On the way...</div></div>
+    </div>
+    <div class="eta-bar">
+      <div><div class="eta-label">Arrives in</div><div class="eta-val" id="match-eta">--</div></div>
+      <div style="text-align:right"><div class="eta-label">Distance</div><div id="match-dist" style="font-size:14px;color:var(--muted)">--</div></div>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button class="btn-danger" style="flex:1" onclick="cancelRide()">Cancel</button>
+      <button class="btn-primary" style="flex:1" onclick="completeRide()">Done — I arrived</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ DRIVER SETUP ============ -->
+<div id="driver-setup" class="screen">
+  <div class="setup-emoji">🛺</div>
+  <div class="setup-title">Start Driving</div>
+  <div class="setup-sub">Enter your phone number to receive ride requests</div>
+  <div class="setup-input">
+    <input id="driver-phone" placeholder="Phone (+961...)" type="tel" autocomplete="tel">
+  </div>
+  <div class="setup-input">
+    <input id="driver-name" placeholder="Your name" autocomplete="name">
+  </div>
+  <button class="btn-primary" style="max-width:300px" onclick="startDriver()">Go Online</button>
+  <div style="margin-top:16px;font-size:12px;color:var(--muted);max-width:280px">Your GPS will start sharing so riders can find you. Keep the app open while driving.</div>
+</div>
+
+<!-- ============ DRIVER ONLINE ============ -->
+<div id="driver-online" class="screen">
+  <div id="driver-map"></div>
+  <div class="request-popup" id="request-popup">
+    <div class="request-card">
+      <div class="req-emoji">🔔</div>
+      <div class="req-title">Ride Request!</div>
+      <div class="req-detail" id="req-detail">Rider nearby</div>
+      <div class="req-buttons">
+        <button class="btn-reject" onclick="rejectRequest()">Pass</button>
+        <button class="btn-accept" onclick="acceptRequest()">Accept</button>
+      </div>
+    </div>
+  </div>
+  <div class="driver-panel">
+    <div class="status-badge"><div class="status-dot"></div><div class="status-text">You're Online</div></div>
+    <div class="driver-stats">
+      <div class="d-stat"><div class="d-stat-val" id="d-updates">0</div><div class="d-stat-label">Updates</div></div>
+      <div class="d-stat"><div class="d-stat-val" id="d-time">0:00</div><div class="d-stat-label">Online</div></div>
+    </div>
+    <div class="waiting-text">Waiting for ride requests...</div>
+    <button class="btn-danger" onclick="goOffline()">Go Offline</button>
+  </div>
+</div>
+
+<!-- ============ DRIVER ACTIVE RIDE ============ -->
+<div id="driver-ride" class="screen">
+  <div id="driver-ride-map"></div>
+  <div class="driver-ride-panel">
+    <div class="match-driver">
+      <div class="match-avatar">📍</div>
+      <div><div class="match-name" id="dr-rider-name">Rider</div><div class="match-status">Heading to pickup</div></div>
+    </div>
+    <div class="eta-bar">
+      <div><div class="eta-label">Distance</div><div class="eta-val" id="dr-dist">--</div></div>
+      <div style="text-align:right"><div class="eta-label">ETA</div><div id="dr-eta" style="font-size:26px;font-weight:800;color:var(--primary)">--</div></div>
+    </div>
+    <button class="btn-primary" onclick="driverComplete()">Ride Complete</button>
+  </div>
+</div>
+
+<!-- ============ COMPLETED ============ -->
+<div id="completed" class="screen">
+  <div class="complete-emoji">🎉</div>
+  <div class="complete-title">Ride Complete!</div>
+  <div class="complete-sub">Thanks for using Wasselni. See you next time!</div>
+  <button class="btn-primary" style="max-width:280px" onclick="location.reload()">Back to Home</button>
+</div>
+
+<script>
+// ===== STATE =====
+let myLocation = null, myPhone = '', myName = '';
+let currentRideId = null, riderMap = null, trackMap = null, driverMap = null, driverRideMap = null;
+let driverMarker = null, pickupMarker = null, routeLine = null;
+let driverWatchId = null, driverStartTime = null, driverUpdates = 0, driverTimer = null;
+let pollInterval = null, driverPollInterval = null;
+let pendingRideId = null;
+
+// ===== NAV =====
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ===== UTILS =====
+function distKm(a, b) {
+  const R=6371,toR=d=>d*Math.PI/180;
+  const dLat=toR(b[0]-a[0]),dLng=toR(b[1]-a[1]);
+  const h=Math.sin(dLat/2)**2+Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(h));
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+function makeMap(divId, center, zoom) {
+  const m = L.map(divId, { zoomControl: false, attributionControl: false }).setView(center, zoom || 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(m);
+  return m;
+}
+
+function addPickup(map, latlng) {
+  const icon = L.divIcon({ className:'', html:'<div class="pickup-pulse"></div>', iconSize:[20,20], iconAnchor:[10,10] });
+  return L.marker(latlng, { icon }).addTo(map);
+}
+
+function addTuktuk(map, latlng) {
+  const icon = L.divIcon({ className:'', html:'<div class="tuktuk-marker">🛺</div>', iconSize:[32,32], iconAnchor:[16,16] });
+  return L.marker(latlng, { icon }).addTo(map);
+}
+
+// ===== RIDER =====
+function initRider() {
+  navigator.geolocation.getCurrentPosition(pos => {
+    myLocation = [pos.coords.latitude, pos.coords.longitude];
+    if (!riderMap) {
+      riderMap = makeMap('rider-map', myLocation);
+      addPickup(riderMap, myLocation);
+    }
+    checkNearby();
+    setInterval(checkNearby, 15000);
+  }, () => {
+    document.getElementById('nearby-count').textContent = '⚠️ Please enable GPS to find nearby tuk-tuks';
+  }, { enableHighAccuracy: true });
+}
+
+async function checkNearby() {
+  if (!myLocation) return;
+  const data = await api(`/api/nearby?lat=${myLocation[0]}&lng=${myLocation[1]}`);
+  const el = document.getElementById('nearby-count');
+  if (data.count > 0) {
+    el.innerHTML = `<span class="nearby-dot"></span> ${data.count} tuk-tuk${data.count>1?'s':''} nearby`;
+    document.getElementById('find-btn').disabled = false;
+  } else {
+    el.textContent = 'No tuk-tuks nearby right now — try again soon';
+  }
+}
+
+async function requestRide() {
+  if (!myLocation) return alert('GPS not available');
+  myName = document.getElementById('rider-name').value || 'Rider';
+  myPhone = 'app_' + Math.random().toString(36).slice(2, 10);
+
+  showScreen('searching');
+  const data = await api('/api/ride/request', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ riderPhone: myPhone, riderName: myName, lat: myLocation[0], lng: myLocation[1] })
+  });
+
+  if (data.error) {
+    document.getElementById('search-sub').textContent = data.message || 'No drivers found';
+    setTimeout(() => showScreen('rider-home'), 3000);
+    return;
+  }
+
+  currentRideId = data.rideId;
+  document.getElementById('search-sub').textContent = `Asking ${data.driversFound} driver${data.driversFound>1?'s':''}...`;
+
+  // Poll for ride status
+  pollInterval = setInterval(async () => {
+    const ride = await api(`/api/ride/${currentRideId}`);
+    if (ride.status === 'accepted') {
+      clearInterval(pollInterval);
+      showMatched(ride);
+    } else if (ride.status === 'expired' || ride.status === 'rejected' || ride.status === 'cancelled') {
+      clearInterval(pollInterval);
+      document.getElementById('search-sub').textContent = 'No drivers accepted — try again';
+      setTimeout(() => showScreen('rider-home'), 3000);
+    }
+  }, 2000);
+}
+
+function cancelSearch() {
+  clearInterval(pollInterval);
+  if (currentRideId) api(`/api/ride/${currentRideId}/cancel`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('rider-home');
+}
+
+function showMatched(ride) {
+  showScreen('matched');
+  document.getElementById('match-name').textContent = ride.driverName || 'Your Driver';
+
+  const riderLL = [ride.riderLocation.lat, ride.riderLocation.lng];
+  const driverLL = ride.driverLocation ? [ride.driverLocation.lat, ride.driverLocation.lng] : riderLL;
+
+  if (!trackMap) {
+    trackMap = makeMap('track-map', riderLL);
+  } else {
+    trackMap.setView(riderLL, 15);
+  }
+
+  pickupMarker = addPickup(trackMap, riderLL);
+  driverMarker = addTuktuk(trackMap, driverLL);
+  routeLine = L.polyline([driverLL, riderLL], { color:'#f2994a', weight:3, dashArray:'8,8', opacity:0.7 }).addTo(trackMap);
+  trackMap.fitBounds([driverLL, riderLL], { padding:[60,60] });
+
+  // Poll tracking
+  pollInterval = setInterval(async () => {
+    const r = await api(`/api/ride/${currentRideId}`);
+    if (r.status === 'completed' || r.status === 'cancelled') { clearInterval(pollInterval); showScreen('completed'); return; }
+    if (r.driverLocation) {
+      const dl = [r.driverLocation.lat, r.driverLocation.lng];
+      driverMarker.setLatLng(dl);
+      routeLine.setLatLngs([dl, riderLL]);
+      if (r.distanceKm !== undefined) {
+        const m = Math.round(r.distanceKm * 1000);
+        document.getElementById('match-dist').textContent = m < 1000 ? `${m} m` : `${r.distanceKm.toFixed(1)} km`;
+        document.getElementById('match-eta').textContent = r.etaMinutes || '--';
+        if (m < 100) {
+          document.getElementById('arrived-msg').classList.add('show');
+          document.getElementById('match-status').textContent = 'Arrived!';
+        } else if (r.etaMinutes <= 2) {
+          document.getElementById('match-status').textContent = 'Almost there!';
+        }
+      }
+    }
+  }, 3000);
+}
+
+function cancelRide() {
+  clearInterval(pollInterval);
+  if (currentRideId) api(`/api/ride/${currentRideId}/cancel`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('rider-home');
+}
+
+function completeRide() {
+  clearInterval(pollInterval);
+  if (currentRideId) api(`/api/ride/${currentRideId}/complete`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('completed');
+}
+
+// ===== DRIVER =====
+function startDriver() {
+  myPhone = document.getElementById('driver-phone').value.replace(/[\s\-\+]/g, '');
+  myName = document.getElementById('driver-name').value || 'Driver';
+  if (!myPhone) return alert('Please enter your phone number');
+
+  // Register driver
+  api('/api/driver/location', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ phone: myPhone, lat: 0, lng: 0 })
+  });
+
+  showScreen('driver-online');
+
+  if (!driverMap) driverMap = makeMap('driver-map', [33.89, 35.51], 13);
+
+  // Start GPS
+  driverWatchId = navigator.geolocation.watchPosition(pos => {
+    const lat = pos.coords.latitude, lng = pos.coords.longitude;
+    myLocation = [lat, lng];
+
+    if (!driverStartTime) {
+      driverStartTime = Date.now();
+      driverTimer = setInterval(updateDriverTimer, 1000);
+    }
+
+    // Update map
+    if (driverMarker) driverMarker.setLatLng([lat, lng]);
+    else { driverMarker = addTuktuk(driverMap, [lat, lng]); driverMap.setView([lat, lng], 15); }
+
+    // Send to server (throttled)
+    driverUpdates++;
+    document.getElementById('d-updates').textContent = driverUpdates;
+    api('/api/driver/location', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ phone: myPhone, lat, lng })
+    });
+  }, err => {
+    alert('GPS error — please enable location services');
+  }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 });
+
+  // Poll for ride requests
+  driverPollInterval = setInterval(checkForRequests, 3000);
+}
+
+function updateDriverTimer() {
+  if (!driverStartTime) return;
+  const s = Math.floor((Date.now() - driverStartTime) / 1000);
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+  document.getElementById('d-time').textContent = h > 0
+    ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+    : `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+async function checkForRequests() {
+  const data = await api(`/api/driver/${myPhone}/requests`);
+  if (data.pending) {
+    pendingRideId = data.pending.rideId;
+    const detail = data.pending.distanceKm
+      ? `${data.pending.riderName} — ${data.pending.distanceKm} km away (~${data.pending.etaMinutes} min)`
+      : `${data.pending.riderName} — nearby`;
+    document.getElementById('req-detail').textContent = detail;
+    document.getElementById('request-popup').classList.add('show');
+  }
+}
+
+async function acceptRequest() {
+  document.getElementById('request-popup').classList.remove('show');
+  clearInterval(driverPollInterval);
+
+  const data = await api(`/api/ride/${pendingRideId}/accept`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ driverPhone: myPhone, driverName: myName })
+  });
+
+  if (data.success) {
+    currentRideId = pendingRideId;
+    showDriverRide(data.riderName, data.riderLocation);
+  }
+}
+
+async function rejectRequest() {
+  document.getElementById('request-popup').classList.remove('show');
+  if (pendingRideId) {
+    await api(`/api/ride/${pendingRideId}/reject`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ driverPhone: myPhone })
+    });
+  }
+  pendingRideId = null;
+}
+
+function showDriverRide(riderName, riderLoc) {
+  showScreen('driver-ride');
+  document.getElementById('dr-rider-name').textContent = riderName;
+
+  const riderLL = [riderLoc.lat, riderLoc.lng];
+  if (!driverRideMap) driverRideMap = makeMap('driver-ride-map', riderLL);
+  else driverRideMap.setView(riderLL, 15);
+
+  const pickup = addPickup(driverRideMap, riderLL);
+  let myMarker = null;
+
+  // Keep tracking driver GPS and showing route
+  const trackInterval = setInterval(async () => {
+    const r = await api(`/api/ride/${currentRideId}`);
+    if (r.status !== 'accepted') { clearInterval(trackInterval); return; }
+    if (myLocation) {
+      if (myMarker) myMarker.setLatLng(myLocation);
+      else { myMarker = addTuktuk(driverRideMap, myLocation); driverRideMap.fitBounds([myLocation, riderLL], {padding:[60,60]}); }
+      if (routeLine) routeLine.setLatLngs([myLocation, riderLL]);
+      else routeLine = L.polyline([myLocation, riderLL], {color:'#f2994a',weight:3,dashArray:'8,8',opacity:0.7}).addTo(driverRideMap);
+
+      const km = distKm(myLocation, riderLL);
+      const m = Math.round(km * 1000);
+      document.getElementById('dr-dist').textContent = m < 1000 ? `${m}m` : `${km.toFixed(1)}km`;
+      document.getElementById('dr-eta').textContent = `${Math.max(1, Math.round((km*1.4)/20*60))}`;
+    }
+  }, 3000);
+}
+
+async function driverComplete() {
+  if (currentRideId) await api(`/api/ride/${currentRideId}/complete`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
+  currentRideId = null;
+  showScreen('completed');
+}
+
+function goOffline() {
+  if (driverWatchId) { navigator.geolocation.clearWatch(driverWatchId); driverWatchId = null; }
+  if (driverTimer) clearInterval(driverTimer);
+  if (driverPollInterval) clearInterval(driverPollInterval);
+  api('/api/driver/offline', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({phone:myPhone}) });
+  showScreen('welcome');
+}
+
+// Register service worker
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body>
+</html>
