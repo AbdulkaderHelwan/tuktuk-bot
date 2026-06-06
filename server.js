@@ -476,5 +476,149 @@ async function expireRide(rideId) {
 
 function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (rid) pendingOffers.delete(phone); }
 
+// ================= APP API (PWA uses these instead of WhatsApp) =================
+
+// Serve the main app
+app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.html")));
+
+// Count nearby drivers (rider sees this on home screen)
+app.get("/api/nearby", (req, res) => {
+  const { lat, lng } = req.query;
+  if (!lat || !lng) return res.json({ count: 0, drivers: [] });
+  const nearby = findNearbyDrivers({ lat: +lat, lng: +lng }, [...drivers.values()], { maxKm: 5, limit: 10 });
+  res.json({ count: nearby.length, drivers: nearby.map(d => ({ name: d.name, distanceKm: d.distanceKm })) });
+});
+
+// Rider requests a ride via the app
+app.post("/api/ride/request", (req, res) => {
+  const { riderPhone, riderName, lat, lng } = req.body;
+  if (!riderPhone || !lat || !lng) return res.json({ error: "missing fields" });
+
+  const nearby = findNearbyDrivers({ lat, lng }, [...drivers.values()], { maxKm: 5, limit: 3 });
+  if (nearby.length === 0) return res.json({ error: "no_drivers", message: "No tuk-tuks available nearby" });
+
+  const rideId = generateRideId();
+  const ride = {
+    id: rideId, riderPhone, riderName: riderName || "Rider", riderLocation: { lat, lng },
+    status: "pending", pingedDrivers: nearby.map(d => d.phone),
+    acceptedBy: null, driverName: null, driverLocation: null, lastUpdate: null, timer: null,
+  };
+  ride.timer = setTimeout(() => {
+    if (ride.status === "pending") { ride.status = "expired"; cleanupRideOffers(rideId); }
+  }, RIDE_TIMEOUT_MS);
+  rides.set(rideId, ride);
+  for (const d of nearby) pendingOffers.set(d.phone, rideId);
+
+  console.log(`[APP] Ride ${rideId}: ${nearby.length} drivers pinged for ${riderPhone}`);
+  res.json({ rideId, driversFound: nearby.length });
+});
+
+// Get ride status (rider and driver both poll this)
+app.get("/api/ride/:rideId", (req, res) => {
+  const ride = rides.get(req.params.rideId);
+  if (!ride) return res.json({ error: "not found" });
+
+  const result = {
+    id: ride.id, status: ride.status,
+    riderName: ride.riderName, riderLocation: ride.riderLocation,
+    driverName: ride.driverName, driverPhone: ride.acceptedBy,
+    driverLocation: ride.driverLocation, lastUpdate: ride.lastUpdate,
+  };
+
+  // Add ETA if driver location known
+  if (ride.driverLocation && ride.riderLocation) {
+    const dist = distanceKm(ride.riderLocation, ride.driverLocation);
+    result.distanceKm = dist;
+    result.etaMinutes = Math.max(2, Math.round((dist * 1.4) / 20 * 60));
+  }
+  res.json(result);
+});
+
+// Driver polls for pending ride requests
+app.get("/api/driver/:phone/requests", (req, res) => {
+  const phone = req.params.phone;
+  const rideId = pendingOffers.get(phone);
+  if (!rideId) return res.json({ pending: null });
+
+  const ride = rides.get(rideId);
+  if (!ride || ride.status !== "pending") { pendingOffers.delete(phone); return res.json({ pending: null }); }
+
+  const driver = drivers.get(phone);
+  const dist = driver?.location ? distanceKm(ride.riderLocation, driver.location) : null;
+
+  res.json({
+    pending: {
+      rideId: ride.id,
+      riderName: ride.riderName,
+      distanceKm: dist ? +dist.toFixed(1) : null,
+      etaMinutes: dist ? Math.max(2, Math.round((dist * 1.4) / 20 * 60)) : null,
+    }
+  });
+});
+
+// Driver accepts ride via app
+app.post("/api/ride/:rideId/accept", (req, res) => {
+  const { driverPhone, driverName } = req.body;
+  const ride = rides.get(req.params.rideId);
+  if (!ride || ride.status !== "pending") return res.json({ error: "ride unavailable" });
+
+  ride.status = "accepted"; ride.acceptedBy = driverPhone; ride.driverName = driverName || "Driver";
+  clearTimeout(ride.timer);
+  const driver = drivers.get(driverPhone);
+  if (driver?.location) ride.driverLocation = driver.location;
+  activeDriverRide.set(driverPhone, ride.id);
+
+  // Clean up other drivers
+  for (const p of ride.pingedDrivers) { if (p !== driverPhone) pendingOffers.delete(p); }
+  pendingOffers.delete(driverPhone);
+
+  console.log(`[APP] Ride ${ride.id}: accepted by ${driverPhone}`);
+  res.json({ success: true, riderName: ride.riderName, riderLocation: ride.riderLocation });
+});
+
+// Driver rejects ride via app
+app.post("/api/ride/:rideId/reject", (req, res) => {
+  const { driverPhone } = req.body;
+  pendingOffers.delete(driverPhone);
+  const ride = rides.get(req.params.rideId);
+  if (ride && ride.status === "pending") {
+    const remaining = ride.pingedDrivers.filter(p => pendingOffers.get(p) === ride.id);
+    if (remaining.length === 0) { ride.status = "rejected"; clearTimeout(ride.timer); }
+  }
+  res.json({ success: true });
+});
+
+// Cancel ride via app
+app.post("/api/ride/:rideId/cancel", (req, res) => {
+  const ride = rides.get(req.params.rideId);
+  if (!ride) return res.json({ error: "not found" });
+  ride.status = "cancelled"; clearTimeout(ride.timer);
+  cleanupRideOffers(ride.id);
+  if (ride.acceptedBy) activeDriverRide.delete(ride.acceptedBy);
+  res.json({ success: true });
+});
+
+// Complete ride via app
+app.post("/api/ride/:rideId/complete", (req, res) => {
+  const ride = rides.get(req.params.rideId);
+  if (!ride) return res.json({ error: "not found" });
+  ride.status = "completed";
+  if (ride.acceptedBy) activeDriverRide.delete(ride.acceptedBy);
+  res.json({ success: true });
+});
+
+// Get active ride for a driver
+app.get("/api/driver/:phone/active", (req, res) => {
+  const rideId = activeDriverRide.get(req.params.phone);
+  if (!rideId) return res.json({ active: null });
+  const ride = rides.get(rideId);
+  if (!ride || ride.status !== "accepted") return res.json({ active: null });
+  res.json({ active: { rideId: ride.id, riderName: ride.riderName, riderLocation: ride.riderLocation } });
+});
+
+function cleanupRideOffers(rideId) {
+  for (const [phone, rid] of pendingOffers) { if (rid === rideId) pendingOffers.delete(phone); }
+}
+
 // ---- Start ----
 app.listen(PORT, () => { console.log(`Tuk-tuk bot listening on :${PORT}`); checkConfig(); });
