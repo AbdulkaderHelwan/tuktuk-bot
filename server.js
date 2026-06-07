@@ -18,14 +18,20 @@ const {
   VERIFY_TOKEN,
   OLLAMA_API_KEY,
   OLLAMA_MODEL = "gemma3:4b",
-  RESEND_API_KEY,
+  BREVO_API_KEY,
+  BREVO_SENDER_EMAIL,
+  BREVO_SENDER_NAME = "Wasselni",
   PORT = 3000,
   BASE_URL = "",
 } = process.env;
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const RIDE_TIMEOUT_MS = 3 * 60 * 1000;
-const STALE_DRIVER_MS = 10 * 60 * 1000; // 10 minutes without GPS = stale
+const STALE_DRIVER_MS = 10 * 60 * 1000;
+const MAX_DRIVERS_PER_RIDE = parseInt(process.env.MAX_DRIVERS_PER_RIDE) || 5;
+const MAX_RADIUS_KM = parseFloat(process.env.MAX_RADIUS_KM) || 5;
+const FARE_BASE_LBP = parseInt(process.env.FARE_BASE_LBP) || 100000;
+const FARE_PER_KM_LBP = parseInt(process.env.FARE_PER_KM_LBP) || 100000;
 
 // Clean up stale drivers every 2 minutes
 setInterval(() => {
@@ -57,7 +63,10 @@ async function checkConfig() {
   console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
   console.log(`OLLAMA_API_KEY:  ${OLLAMA_API_KEY ? "set" : "not set — AI disabled"}`);
   console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
-  console.log(`RESEND_API_KEY:  ${RESEND_API_KEY ? "set — emails will be sent" : "not set — codes will print to console"}`);
+  console.log(`BREVO_API_KEY:   ${BREVO_API_KEY ? "set" : "not set — codes will print to console"}`);
+  console.log(`BREVO_SENDER:    ${BREVO_SENDER_EMAIL ? `${BREVO_SENDER_NAME} <${BREVO_SENDER_EMAIL}>` : "not set"}`);
+  console.log(`MATCHING:        ${MAX_DRIVERS_PER_RIDE} drivers max, ${MAX_RADIUS_KM}km radius`);
+  console.log(`FARE:            ${FARE_BASE_LBP.toLocaleString()} LBP base + ${FARE_PER_KM_LBP.toLocaleString()} LBP/km`);
   try {
     const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}`, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } });
     const data = await res.json();
@@ -484,33 +493,37 @@ const verificationCodes = new Map(); // email -> { code, expiresAt }
 const sessions = new Map();           // token -> { email, name, createdAt }
 
 async function sendVerificationEmail(email, code) {
-  if (!RESEND_API_KEY) {
-    console.log(`[NO RESEND KEY] Verification code for ${email}: ${code}`);
+  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+    console.log(`[NO BREVO CONFIG] Verification code for ${email}: ${code}`);
     return true; // pretend success in dev mode
   }
   try {
-    const res = await fetch("https://api.resend.com/emails", {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        "api-key": BREVO_API_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
       body: JSON.stringify({
-        from: "Wasselni <onboarding@resend.dev>",
-        to: email,
+        sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
+        to: [{ email }],
         subject: `Your Wasselni code: ${code}`,
-        html: `
-          <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#1a1a2e;color:#fff;border-radius:16px">
+        htmlContent: `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0a0e1a;color:#fff;border-radius:16px">
             <div style="font-size:48px;text-align:center;margin-bottom:8px">🛺</div>
-            <h1 style="text-align:center;color:#F2C94C;margin:0 0 8px;font-size:28px">Wasselni</h1>
-            <p style="text-align:center;color:#8a8aa0;margin:0 0 32px;font-size:14px">Your nearest tuk-tuk, one tap away</p>
+            <h1 style="text-align:center;color:#FFB547;margin:0 0 8px;font-size:28px;font-family:Georgia,serif">Wasselni</h1>
+            <p style="text-align:center;color:#7C7C8A;margin:0 0 32px;font-size:14px">Your nearest tuk-tuk, one tap away</p>
             <p style="font-size:16px;margin-bottom:16px">Your verification code is:</p>
-            <div style="background:linear-gradient(135deg,#F2994A,#F2C94C);color:#1a1a2e;font-size:36px;font-weight:bold;letter-spacing:8px;padding:24px;text-align:center;border-radius:12px;margin:16px 0">${code}</div>
-            <p style="color:#8a8aa0;font-size:13px;margin-top:24px">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
+            <div style="background:linear-gradient(135deg,#FF8C42,#FFB547);color:#0a0e1a;font-size:36px;font-weight:bold;letter-spacing:8px;padding:24px;text-align:center;border-radius:12px;margin:16px 0">${code}</div>
+            <p style="color:#7C7C8A;font-size:13px;margin-top:24px">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
           </div>`,
       }),
     });
-    if (!res.ok) { console.error("Resend failed:", await res.text()); return false; }
-    console.log(`Verification code sent to ${email}`);
+    if (!res.ok) { console.error("Brevo failed:", await res.text()); return false; }
+    console.log(`Verification code sent to ${email} via Brevo`);
     return true;
-  } catch (e) { console.error("Email send error:", e.message); return false; }
+  } catch (e) { console.error("Brevo error:", e.message); return false; }
 }
 
 app.post("/api/auth/request-code", async (req, res) => {
@@ -565,8 +578,8 @@ app.post("/api/ride/request", (req, res) => {
   const { riderPhone, riderName, lat, lng } = req.body;
   if (!riderPhone || !lat || !lng) return res.json({ error: "missing fields" });
 
-  const nearby = findNearbyDrivers({ lat, lng }, [...drivers.values()], { maxKm: 5, limit: 3 });
-  if (nearby.length === 0) return res.json({ error: "no_drivers", message: "No tuk-tuks available nearby" });
+  const nearby = findNearbyDrivers({ lat, lng }, [...drivers.values()], { maxKm: MAX_RADIUS_KM, limit: MAX_DRIVERS_PER_RIDE });
+  if (nearby.length === 0) return res.json({ error: "no_drivers", message: `No tuk-tuks within ${MAX_RADIUS_KM}km` });
 
   const rideId = generateRideId();
   const ride = {
@@ -599,8 +612,15 @@ app.get("/api/ride/:rideId", (req, res) => {
   // Add ETA if driver location known
   if (ride.driverLocation && ride.riderLocation) {
     const dist = distanceKm(ride.riderLocation, ride.driverLocation);
-    result.distanceKm = dist;
+    result.distanceKm = +dist.toFixed(2);
     result.etaMinutes = Math.max(2, Math.round((dist * 1.4) / 20 * 60));
+  }
+  // Fare estimate (based on rider's last known straight-line distance from a reference point — approximation)
+  if (ride.riderLocation && ride.driverLocation) {
+    const km = distanceKm(ride.riderLocation, ride.driverLocation);
+    const fareLBP = Math.round((FARE_BASE_LBP + km * FARE_PER_KM_LBP) / 1000) * 1000;
+    result.fareEstimateLBP = fareLBP;
+    result.fareEstimateUSD = +(fareLBP / 90000).toFixed(1);
   }
   res.json(result);
 });
@@ -616,13 +636,17 @@ app.get("/api/driver/:phone/requests", (req, res) => {
 
   const driver = drivers.get(phone);
   const dist = driver?.location ? distanceKm(ride.riderLocation, driver.location) : null;
+  const fareLBP = dist ? Math.round((FARE_BASE_LBP + dist * FARE_PER_KM_LBP) / 1000) * 1000 : null;
 
   res.json({
     pending: {
       rideId: ride.id,
       riderName: ride.riderName,
-      distanceKm: dist ? +dist.toFixed(1) : null,
+      riderLocation: ride.riderLocation,
+      distanceKm: dist ? +dist.toFixed(2) : null,
       etaMinutes: dist ? Math.max(2, Math.round((dist * 1.4) / 20 * 60)) : null,
+      fareEstimateLBP: fareLBP,
+      fareEstimateUSD: fareLBP ? +(fareLBP / 90000).toFixed(1) : null,
     }
   });
 });
