@@ -65,6 +65,7 @@ async function checkConfig() {
   console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
   console.log(`GMAIL_USER:      ${GMAIL_USER || "not set"}`);
   console.log(`GMAIL_APP_PASS:  ${GMAIL_APP_PASSWORD ? "set" : "not set — codes will print to console"}`);
+  getMailTransporter(); // warm up connection at boot
   console.log(`MATCHING:        ${MAX_DRIVERS_PER_RIDE} drivers max, ${MAX_RADIUS_KM}km radius`);
   console.log(`FARE:            ${FARE_BASE_LBP.toLocaleString()} LBP base + ${FARE_PER_KM_LBP.toLocaleString()} LBP/km`);
   try {
@@ -492,7 +493,7 @@ function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (r
 const verificationCodes = new Map(); // email -> { code, expiresAt }
 const sessions = new Map();           // token -> { email, name, createdAt }
 
-// Set up Gmail SMTP transporter (lazy)
+// Set up Gmail SMTP transporter (lazy, pooled for speed)
 let mailTransporter = null;
 function getMailTransporter() {
   if (!GMAIL_USER || !GMAIL_APP_PASSWORD) return null;
@@ -501,6 +502,17 @@ function getMailTransporter() {
   mailTransporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+    pool: true,          // reuse connection between sends
+    maxConnections: 3,
+    maxMessages: 100,
+    connectionTimeout: 20000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000,
+  });
+  // Verify connection on startup so we know early if creds are wrong
+  mailTransporter.verify((err) => {
+    if (err) console.error("⚠️ Gmail SMTP verification FAILED:", err.message);
+    else console.log("✓ Gmail SMTP ready");
   });
   return mailTransporter;
 }
@@ -536,8 +548,9 @@ app.post("/api/auth/request-code", async (req, res) => {
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.json({ error: "invalid email" });
   const code = Math.floor(100000 + Math.random() * 900000).toString();
   verificationCodes.set(email.toLowerCase(), { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-  const sent = await sendVerificationEmail(email, code);
-  res.json({ success: sent });
+  // Respond immediately — send email in background to avoid timeouts on slow cold starts
+  res.json({ success: true });
+  sendVerificationEmail(email, code).catch(e => console.error("Background email send failed:", e.message));
 });
 
 app.post("/api/auth/verify", (req, res) => {
