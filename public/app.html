@@ -522,71 +522,17 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
 <div class="aurora"></div>
 <div class="noise"></div>
 
-<!-- ============ AUTH: EMAIL or WHATSAPP ============ -->
+<!-- ============ AUTH: SIMPLE SIGNUP ============ -->
 <div id="auth-email" class="screen">
   <div class="auth-wrap">
     <div class="auth-emoji">🛺</div>
     <div class="auth-title">Wasselni</div>
-    <div class="auth-sub">Sign in or create an account to start riding</div>
+    <div class="auth-sub">Enter your name and phone number to get started</div>
     <div class="auth-form">
-      <div class="auth-tabs">
-        <button class="auth-tab active" id="tab-wa" onclick="switchAuthTab('wa')">📱 WhatsApp</button>
-        <button class="auth-tab" id="tab-email" onclick="switchAuthTab('email')">✉️ Email</button>
-      </div>
-
-      <!-- WhatsApp tab -->
-      <div class="tab-content active" id="content-wa">
-        <input id="wa-name-input" placeholder="Your name" autocomplete="name">
-        <button class="wa-button" id="wa-start-btn" onclick="startWhatsAppVerify()">
-          <span class="wa-icon">💬</span> Verify on WhatsApp
-        </button>
-        <div class="auth-error" id="wa-error"></div>
-        <div class="auth-hint">Opens WhatsApp with a ready-made message. Just tap send.</div>
-      </div>
-
-      <!-- Email tab -->
-      <div class="tab-content" id="content-email">
-        <input id="auth-email-input" type="email" placeholder="your.email@gmail.com" autocomplete="email" inputmode="email">
-        <input id="auth-name-input" placeholder="Your name" autocomplete="name">
-        <button class="btn-primary" id="send-code-btn" onclick="requestCode()">Send Verification Code</button>
-        <div class="auth-error" id="auth-error"></div>
-        <div class="auth-hint">We'll send a 6-digit code to verify your email</div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ============ AUTH: WHATSAPP WAITING ============ -->
-<div id="auth-wa-waiting" class="screen">
-  <div class="auth-wrap">
-    <div class="auth-emoji">💬</div>
-    <div class="auth-title">Verify on WhatsApp</div>
-    <div class="auth-sub">Tap the button to open WhatsApp.<br>Send the pre-filled message — it's instant.</div>
-    <div class="auth-form">
-      <div class="wa-waiting-card">
-        <div style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;margin-bottom:10px">Your verification code</div>
-        <div class="wa-code-pill" id="wa-code-display">WSL-XXXXXX</div>
-      </div>
-      <a class="wa-button" id="wa-open-link" href="#" target="_blank" rel="noopener">
-        <span class="wa-icon">💬</span> Open WhatsApp
-      </a>
-      <div style="text-align:center;color:var(--muted);font-size:13px;margin-top:8px" id="wa-status">⏳ Waiting for verification...</div>
-      <button class="btn-outline" onclick="cancelWaVerify()">← Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- ============ AUTH: CODE ============ -->
-<div id="auth-code" class="screen">
-  <div class="auth-wrap">
-    <div class="auth-emoji">📬</div>
-    <div class="auth-title">Check your email</div>
-    <div class="auth-sub">We sent a 6-digit code to<br><span class="email-pill" id="sent-to-email"></span></div>
-    <div class="auth-form">
-      <input id="auth-code-input" class="code-input" type="text" placeholder="••••••" inputmode="numeric" maxlength="6" pattern="[0-9]*">
-      <button class="btn-primary" id="verify-btn" onclick="verifyCode()">Verify</button>
-      <div class="auth-error" id="code-error"></div>
-      <button class="btn-outline" onclick="showScreen('auth-email')">← Use a different email</button>
+      <input id="auth-name-input" placeholder="Your name" autocomplete="name">
+      <input id="auth-phone-input" placeholder="Phone number" type="tel" autocomplete="tel" inputmode="tel">
+      <button class="btn-primary" id="signup-btn" onclick="simpleRegister()">Get Started</button>
+      <div class="auth-error" id="auth-error"></div>
     </div>
   </div>
 </div>
@@ -773,7 +719,7 @@ function checkSession() {
   myEmail = localStorage.getItem('wasselni_email') || '';
   myName = localStorage.getItem('wasselni_name') || '';
   if (myToken && myEmail) {
-    myPhone = myEmail; // use email as the unique identifier
+    myPhone = myEmail;
     showScreen('welcome');
     document.getElementById('user-greeting').textContent = `Hi, ${myName}!`;
   } else {
@@ -781,68 +727,38 @@ function checkSession() {
   }
 }
 
-async function requestCode() {
-  const email = document.getElementById('auth-email-input').value.trim().toLowerCase();
+async function simpleRegister() {
   const name = document.getElementById('auth-name-input').value.trim();
+  const phone = document.getElementById('auth-phone-input').value.trim();
   const errEl = document.getElementById('auth-error');
   errEl.textContent = '';
 
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { errEl.textContent = 'Please enter a valid email'; return; }
   if (!name) { errEl.textContent = 'Please enter your name'; return; }
+  if (!phone || phone.length < 6) { errEl.textContent = 'Please enter a valid phone number'; return; }
 
-  document.getElementById('send-code-btn').disabled = true;
-  document.getElementById('send-code-btn').textContent = 'Sending...';
-
-  try {
-    const data = await api('/api/auth/request-code', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email })
-    });
-    if (data.success) {
-      myEmail = email; myName = name;
-      document.getElementById('sent-to-email').textContent = email;
-      showScreen('auth-code');
-      setTimeout(() => document.getElementById('auth-code-input').focus(), 200);
-    } else {
-      errEl.textContent = 'Could not send code. Try again.';
-    }
-  } catch (e) { errEl.textContent = 'Network error. Try again.'; }
-
-  document.getElementById('send-code-btn').disabled = false;
-  document.getElementById('send-code-btn').textContent = 'Send Verification Code';
-}
-
-async function verifyCode() {
-  const code = document.getElementById('auth-code-input').value.trim();
-  const errEl = document.getElementById('code-error');
-  errEl.textContent = '';
-
-  if (code.length !== 6) { errEl.textContent = 'Enter the 6-digit code'; return; }
-
-  document.getElementById('verify-btn').disabled = true;
-  document.getElementById('verify-btn').textContent = 'Verifying...';
+  const btn = document.getElementById('signup-btn');
+  btn.disabled = true;
+  btn.textContent = 'Signing in...';
 
   try {
-    const data = await api('/api/auth/verify', {
+    const data = await api('/api/auth/register', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email: myEmail, code, name: myName })
+      body: JSON.stringify({ name, phone })
     });
     if (data.success) {
-      myToken = data.token; myEmail = data.email; myName = data.name; myPhone = data.email;
+      myToken = data.token; myEmail = data.phone; myName = data.name; myPhone = data.phone;
       localStorage.setItem('wasselni_token', myToken);
       localStorage.setItem('wasselni_email', myEmail);
       localStorage.setItem('wasselni_name', myName);
       document.getElementById('user-greeting').textContent = `Hi, ${myName}!`;
       showScreen('welcome');
     } else {
-      errEl.textContent = data.error === 'invalid code' ? 'Wrong code, try again' :
-                         data.error === 'code expired' ? 'Code expired — request a new one' :
-                         'Verification failed';
+      errEl.textContent = data.error || 'Something went wrong';
     }
   } catch (e) { errEl.textContent = 'Network error. Try again.'; }
 
-  document.getElementById('verify-btn').disabled = false;
-  document.getElementById('verify-btn').textContent = 'Verify';
+  btn.disabled = false;
+  btn.textContent = 'Get Started';
 }
 
 function logout() {
@@ -850,85 +766,6 @@ function logout() {
   localStorage.removeItem('wasselni_email');
   localStorage.removeItem('wasselni_name');
   myToken = ''; myEmail = ''; myName = ''; myPhone = '';
-  showScreen('auth-email');
-}
-
-// ===== WHATSAPP AUTH =====
-let waPollInterval = null;
-let waCurrentCode = null;
-
-function switchAuthTab(tab) {
-  document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-  document.getElementById(`tab-${tab}`).classList.add('active');
-  document.getElementById(`content-${tab}`).classList.add('active');
-}
-
-async function startWhatsAppVerify() {
-  const name = document.getElementById('wa-name-input').value.trim();
-  const errEl = document.getElementById('wa-error');
-  errEl.textContent = '';
-  if (!name) { errEl.textContent = 'Please enter your name'; return; }
-
-  const btn = document.getElementById('wa-start-btn');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="wa-icon">⏳</span> Preparing...';
-
-  try {
-    const data = await api('/api/auth/whatsapp/request', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name })
-    });
-    if (data.error || !data.code) {
-      errEl.textContent = data.error || 'Could not start verification';
-      btn.disabled = false;
-      btn.innerHTML = '<span class="wa-icon">💬</span> Verify on WhatsApp';
-      return;
-    }
-
-    myName = name;
-    waCurrentCode = data.code;
-    document.getElementById('wa-code-display').textContent = data.code;
-    document.getElementById('wa-open-link').href = data.waLink;
-    showScreen('auth-wa-waiting');
-
-    // Start polling for verification
-    waPollInterval = setInterval(checkWaVerification, 2000);
-  } catch (e) {
-    errEl.textContent = 'Network error. Try again.';
-    btn.disabled = false;
-    btn.innerHTML = '<span class="wa-icon">💬</span> Verify on WhatsApp';
-  }
-}
-
-async function checkWaVerification() {
-  if (!waCurrentCode) return;
-  try {
-    const data = await api(`/api/auth/whatsapp/check?code=${waCurrentCode}`);
-    if (data.verified) {
-      clearInterval(waPollInterval);
-      waCurrentCode = null;
-      myToken = data.token; myEmail = data.email; myName = data.name; myPhone = data.email;
-      localStorage.setItem('wasselni_token', myToken);
-      localStorage.setItem('wasselni_email', myEmail);
-      localStorage.setItem('wasselni_name', myName);
-      document.getElementById('user-greeting').textContent = `Hi, ${myName}!`;
-      document.getElementById('wa-status').innerHTML = '✅ Verified! Signing you in...';
-      setTimeout(() => showScreen('welcome'), 800);
-    } else if (data.error === 'expired') {
-      clearInterval(waPollInterval);
-      document.getElementById('wa-status').innerHTML = '⌛ Code expired. Please try again.';
-      setTimeout(cancelWaVerify, 2000);
-    }
-  } catch (e) { /* silent — keep polling */ }
-}
-
-function cancelWaVerify() {
-  if (waPollInterval) clearInterval(waPollInterval);
-  waCurrentCode = null;
-  // reset button state
-  const btn = document.getElementById('wa-start-btn');
-  if (btn) { btn.disabled = false; btn.innerHTML = '<span class="wa-icon">💬</span> Verify on WhatsApp'; }
   showScreen('auth-email');
 }
 
@@ -1253,20 +1090,13 @@ const originalShowScreen = showScreen;
 showScreen = function(id) {
   originalShowScreen(id);
   if (id === 'driver-setup' && myName) {
-    document.getElementById('driver-greeting').textContent = `${myName} • ${myEmail}`;
+    document.getElementById('driver-greeting').textContent = `${myName} • ${myPhone}`;
   }
 };
 
-// Auto-submit code when 6 digits entered
-document.getElementById('auth-code-input').addEventListener('input', function(e) {
-  this.value = this.value.replace(/\D/g, '').slice(0, 6);
-  if (this.value.length === 6) setTimeout(verifyCode, 100);
-});
-
-// Allow Enter to submit email form
-document.getElementById('auth-email-input').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
-document.getElementById('auth-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') requestCode(); });
-document.getElementById('wa-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') startWhatsAppVerify(); });
+// Allow Enter to submit signup form
+document.getElementById('auth-name-input').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('auth-phone-input').focus(); });
+document.getElementById('auth-phone-input').addEventListener('keydown', e => { if (e.key === 'Enter') simpleRegister(); });
 </script>
 </body>
 </html>
