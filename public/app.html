@@ -296,6 +296,16 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
   border:1px solid var(--border);border-radius:16px;
   padding:16px 18px;margin-bottom:14px;
 }
+.match-stats{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;
+}
+.match-stat{
+  background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid var(--border);border-radius:14px;
+  padding:12px 8px;text-align:center;
+}
+.match-stat .eta-val{font-size:22px}
+.match-stat .unit{font-size:12px;color:var(--muted);margin-left:3px}
 .eta-val{
   font-family:'Fraunces',serif;font-size:32px;font-weight:400;letter-spacing:-0.04em;
   background:linear-gradient(135deg,var(--primary),var(--accent));
@@ -404,6 +414,19 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
   40%,80%{transform:rotate(15deg)}
 }
 .req-title{font-family:'Fraunces',serif;font-size:24px;font-weight:400;margin-bottom:6px;letter-spacing:-0.03em}
+.req-rider{color:var(--text);font-size:16px;font-weight:600;margin-bottom:18px}
+.req-stats{
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:22px;
+}
+.req-stat{
+  background:var(--glass);border:1px solid var(--border);border-radius:12px;
+  padding:12px 8px;text-align:center;
+}
+.req-stat-label{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;font-weight:600;margin-bottom:4px}
+.req-stat-value{
+  font-family:'Fraunces',serif;font-size:18px;font-weight:500;letter-spacing:-0.02em;
+  color:var(--accent);
+}
 .req-detail{color:var(--muted);font-size:14px;margin-bottom:22px;line-height:1.5}
 .req-buttons{display:flex;gap:12px}
 .req-buttons button{flex:1;padding:16px;border-radius:14px;font-weight:700;font-size:15px;transition:transform .15s}
@@ -553,9 +576,19 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
       <div class="match-avatar">🛺</div>
       <div><div class="match-name" id="match-name">Driver</div><div class="match-status" id="match-status">On the way...</div></div>
     </div>
-    <div class="eta-bar">
-      <div><div class="eta-label">Arrives in</div><div class="eta-val"><span id="match-eta">--</span><span style="font-size:14px;color:var(--muted);margin-left:4px">min</span></div></div>
-      <div style="text-align:right"><div class="eta-label">Distance</div><div id="match-dist" style="font-size:18px;font-weight:600;color:var(--text);font-family:'Fraunces',serif">--</div></div>
+    <div class="match-stats">
+      <div class="match-stat">
+        <div class="eta-label">Arrives in</div>
+        <div class="eta-val"><span id="match-eta">--</span><span class="unit">min</span></div>
+      </div>
+      <div class="match-stat">
+        <div class="eta-label">Distance</div>
+        <div class="eta-val" id="match-dist">--</div>
+      </div>
+      <div class="match-stat">
+        <div class="eta-label">Est. fare</div>
+        <div class="eta-val" id="match-fare">--</div>
+      </div>
     </div>
     <div style="display:flex;gap:10px">
       <button class="btn-danger" style="flex:1" onclick="cancelRide()">Cancel</button>
@@ -585,8 +618,22 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
   <div class="request-popup" id="request-popup">
     <div class="request-card">
       <div class="req-emoji">🔔</div>
-      <div class="req-title">Ride Request!</div>
-      <div class="req-detail" id="req-detail">Rider nearby</div>
+      <div class="req-title">New Ride Request</div>
+      <div class="req-rider" id="req-rider">Rider</div>
+      <div class="req-stats">
+        <div class="req-stat">
+          <div class="req-stat-label">Distance</div>
+          <div class="req-stat-value" id="req-dist">--</div>
+        </div>
+        <div class="req-stat">
+          <div class="req-stat-label">ETA</div>
+          <div class="req-stat-value" id="req-eta">--</div>
+        </div>
+        <div class="req-stat">
+          <div class="req-stat-label">Est. fare</div>
+          <div class="req-stat-value" id="req-fare">--</div>
+        </div>
+      </div>
       <div class="req-buttons">
         <button class="btn-reject" onclick="rejectRequest()">Pass</button>
         <button class="btn-accept" onclick="acceptRequest()">Accept</button>
@@ -860,8 +907,11 @@ function showMatched(ride) {
       routeLine.setLatLngs([dl, riderLL]);
       if (r.distanceKm !== undefined) {
         const m = Math.round(r.distanceKm * 1000);
-        document.getElementById('match-dist').textContent = m < 1000 ? `${m} m` : `${r.distanceKm.toFixed(1)} km`;
+        document.getElementById('match-dist').textContent = m < 1000 ? `${m}m` : `${r.distanceKm.toFixed(1)}km`;
         document.getElementById('match-eta').textContent = r.etaMinutes || '--';
+        if (r.fareEstimateLBP) {
+          document.getElementById('match-fare').textContent = `${(r.fareEstimateLBP / 1000).toFixed(0)}k`;
+        }
         if (m < 100) {
           document.getElementById('arrived-msg').classList.add('show');
           document.getElementById('match-status').textContent = 'Arrived!';
@@ -944,10 +994,23 @@ async function checkForRequests() {
   const data = await api(`/api/driver/${myPhone}/requests`);
   if (data.pending) {
     pendingRideId = data.pending.rideId;
-    const detail = data.pending.distanceKm
-      ? `${data.pending.riderName} — ${data.pending.distanceKm} km away (~${data.pending.etaMinutes} min)`
-      : `${data.pending.riderName} — nearby`;
-    document.getElementById('req-detail').textContent = detail;
+    document.getElementById('req-rider').textContent = data.pending.riderName || 'Rider';
+
+    // Distance
+    const km = data.pending.distanceKm;
+    document.getElementById('req-dist').textContent = km !== null
+      ? (km < 1 ? `${Math.round(km * 1000)}m` : `${km.toFixed(1)}km`)
+      : '--';
+
+    // ETA
+    document.getElementById('req-eta').textContent = data.pending.etaMinutes
+      ? `${data.pending.etaMinutes} min` : '--';
+
+    // Fare
+    document.getElementById('req-fare').textContent = data.pending.fareEstimateLBP
+      ? `${(data.pending.fareEstimateLBP / 1000).toFixed(0)}k LBP`
+      : '--';
+
     document.getElementById('request-popup').classList.add('show');
   }
 }
