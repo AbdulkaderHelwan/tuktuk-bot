@@ -18,9 +18,6 @@ const {
   VERIFY_TOKEN,
   OLLAMA_API_KEY,
   OLLAMA_MODEL = "gemma3:4b",
-  SENDGRID_API_KEY,
-  SENDGRID_FROM_EMAIL,
-  SENDGRID_FROM_NAME = "Wasselni",
   PORT = 3000,
   BASE_URL = "",
 } = process.env;
@@ -63,19 +60,13 @@ async function checkConfig() {
   console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
   console.log(`OLLAMA_API_KEY:  ${OLLAMA_API_KEY ? "set" : "not set — AI disabled"}`);
   console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
-  console.log(`SENDGRID_KEY:    ${SENDGRID_API_KEY ? "set" : "not set — codes will print to console"}`);
-  console.log(`SENDGRID_FROM:   ${SENDGRID_FROM_EMAIL || "not set"}`);
   console.log(`MATCHING:        ${MAX_DRIVERS_PER_RIDE} drivers max, ${MAX_RADIUS_KM}km radius`);
   console.log(`FARE:            ${FARE_BASE_LBP.toLocaleString()} LBP base + ${FARE_PER_KM_LBP.toLocaleString()} LBP/km`);
   try {
     const res = await fetch(`${GRAPH}/${PHONE_NUMBER_ID}`, { headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}` } });
     const data = await res.json();
     if (data.error) console.log(`TOKEN TEST FAILED: ${JSON.stringify(data.error)}`);
-    else {
-      botDisplayPhone = (data.display_phone_number || "").replace(/[^\d]/g, "");
-      console.log(`TOKEN TEST PASSED — phone: ${data.display_phone_number}, verified: ${data.verified_name}`);
-      console.log(`BOT WA PHONE:    ${botDisplayPhone} (used for wa.me links)`);
-    }
+    else console.log(`TOKEN TEST PASSED — phone: ${data.display_phone_number}, verified: ${data.verified_name}`);
   } catch (e) { console.log(`TOKEN TEST ERROR: ${e.message}`); }
   console.log(`=================`);
 }
@@ -258,23 +249,6 @@ app.get("/api/track/:rideId/status", (req, res) => {
 // ================= MESSAGE HANDLERS =================
 
 async function handleText(from, name, text, req) {
-  // Check for app verification code first
-  const verifyMatch = text.toUpperCase().match(/WSL-[A-F0-9]{6}/);
-  if (verifyMatch) {
-    const code = verifyMatch[0];
-    const data = whatsappCodes.get(code);
-    if (data && !data.verified) {
-      data.verified = true;
-      data.whatsappPhone = from;
-      console.log(`WhatsApp code ${code} verified by ${from}`);
-      return sendText(from, `✅ Verified! Return to the Wasselni app — you're now signed in.`);
-    } else if (data?.verified) {
-      return sendText(from, `This code was already used. Open the app to request a new one if you need to.`);
-    } else {
-      return sendText(from, `That code is invalid or expired. Open the Wasselni app to get a fresh one.`);
-    }
-  }
-
   const lower = text.toLowerCase();
 
   // Fast path: exact keywords skip AI entirely (instant, free)
@@ -508,110 +482,18 @@ async function expireRide(rideId) {
 
 function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (rid) pendingOffers.delete(phone); }
 
-// ================= AUTH (Email + 6-digit code via Resend) =================
+// ================= AUTH (simple — name + phone, no verification) =================
 
-const verificationCodes = new Map(); // email -> { code, expiresAt }
-const sessions = new Map();           // token -> { email, name, createdAt }
-const whatsappCodes = new Map();      // code -> { name, expiresAt, verified, whatsappPhone }
-let botDisplayPhone = "";              // populated at startup from Meta API (e.g. "96181585326")
+const sessions = new Map(); // token -> { phone, name, createdAt }
 
-async function sendVerificationEmail(email, code) {
-  if (!SENDGRID_API_KEY || !SENDGRID_FROM_EMAIL) {
-    console.log(`[NO SENDGRID CONFIG] Verification code for ${email}: ${code}`);
-    return true;
-  }
-  try {
-    const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${SENDGRID_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email }] }],
-        from: { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME },
-        subject: `Your Wasselni code: ${code}`,
-        content: [{
-          type: "text/html",
-          value: `
-            <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0a0e1a;color:#fff;border-radius:16px">
-              <div style="font-size:48px;text-align:center;margin-bottom:8px">🛺</div>
-              <h1 style="text-align:center;color:#FFB547;margin:0 0 8px;font-size:28px;font-family:Georgia,serif">Wasselni</h1>
-              <p style="text-align:center;color:#7C7C8A;margin:0 0 32px;font-size:14px">Your nearest tuk-tuk, one tap away</p>
-              <p style="font-size:16px;margin-bottom:16px">Your verification code is:</p>
-              <div style="background:linear-gradient(135deg,#FF8C42,#FFB547);color:#0a0e1a;font-size:36px;font-weight:bold;letter-spacing:8px;padding:24px;text-align:center;border-radius:12px;margin:16px 0">${code}</div>
-              <p style="color:#7C7C8A;font-size:13px;margin-top:24px">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
-            </div>`,
-        }],
-      }),
-    });
-    if (!res.ok) { console.error("SendGrid failed:", res.status, await res.text()); return false; }
-    console.log(`Verification code sent to ${email} via SendGrid`);
-    return true;
-  } catch (e) { console.error("SendGrid error:", e.message); return false; }
-}
-
-app.post("/api/auth/request-code", async (req, res) => {
-  const { email } = req.body;
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.json({ error: "invalid email" });
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  verificationCodes.set(email.toLowerCase(), { code, expiresAt: Date.now() + 10 * 60 * 1000 });
-  // Respond immediately — send email in background to avoid timeouts on slow cold starts
-  res.json({ success: true });
-  sendVerificationEmail(email, code).catch(e => console.error("Background email send failed:", e.message));
-});
-
-app.post("/api/auth/verify", (req, res) => {
-  const { email, code, name } = req.body;
-  if (!email || !code) return res.json({ error: "missing fields" });
-  const emailKey = email.toLowerCase();
-  const stored = verificationCodes.get(emailKey);
-  if (!stored) return res.json({ error: "no code requested" });
-  if (Date.now() > stored.expiresAt) { verificationCodes.delete(emailKey); return res.json({ error: "code expired" }); }
-  if (stored.code !== code.toString()) return res.json({ error: "invalid code" });
-  verificationCodes.delete(emailKey);
+app.post("/api/auth/register", (req, res) => {
+  const { name, phone } = req.body;
+  if (!name || !phone) return res.json({ error: "Name and phone number are required" });
+  const cleanPhone = phone.replace(/[\s\-\(\)]/g, "");
   const token = crypto.randomBytes(24).toString("hex");
-  const finalName = name || emailKey.split("@")[0];
-  sessions.set(token, { email: emailKey, name: finalName, createdAt: Date.now() });
-  console.log(`User verified: ${emailKey}`);
-  res.json({ success: true, token, email: emailKey, name: finalName });
-});
-
-app.get("/api/auth/me", (req, res) => {
-  const token = req.headers.authorization?.replace("Bearer ", "");
-  if (!token) return res.json({ error: "not logged in" });
-  const session = sessions.get(token);
-  if (!session) return res.json({ error: "invalid session" });
-  res.json({ email: session.email, name: session.name });
-});
-
-// ---- WhatsApp verification ----
-// User enters name → server generates a code → user sends "Verify WSL-XXXXXX" to the bot
-app.post("/api/auth/whatsapp/request", (req, res) => {
-  const { name } = req.body;
-  if (!name) return res.json({ error: "name required" });
-  if (!botDisplayPhone) return res.json({ error: "WhatsApp not configured" });
-  const code = "WSL-" + crypto.randomBytes(3).toString("hex").toUpperCase();
-  whatsappCodes.set(code, { name, expiresAt: Date.now() + 10 * 60 * 1000, verified: false });
-  const waLink = `https://wa.me/${botDisplayPhone}?text=${encodeURIComponent("Verify " + code)}`;
-  res.json({ code, waLink });
-});
-
-// App polls this to check if user has sent the verification message
-app.get("/api/auth/whatsapp/check", (req, res) => {
-  const { code } = req.query;
-  const data = whatsappCodes.get(code);
-  if (!data) return res.json({ error: "invalid code" });
-  if (Date.now() > data.expiresAt) { whatsappCodes.delete(code); return res.json({ error: "expired" }); }
-  if (!data.verified) return res.json({ verified: false });
-
-  // Verified! Issue session token
-  whatsappCodes.delete(code);
-  const token = crypto.randomBytes(24).toString("hex");
-  const id = data.whatsappPhone || code; // use real WhatsApp phone as identifier
-  sessions.set(token, { email: id, name: data.name, createdAt: Date.now() });
-  console.log(`WhatsApp user verified: ${id} (${data.name})`);
-  res.json({ verified: true, token, email: id, name: data.name });
+  sessions.set(token, { phone: cleanPhone, name: name.trim(), createdAt: Date.now() });
+  console.log(`User registered: ${name.trim()} (${cleanPhone})`);
+  res.json({ success: true, token, phone: cleanPhone, name: name.trim() });
 });
 
 // ================= APP API (PWA uses these instead of WhatsApp) =================
