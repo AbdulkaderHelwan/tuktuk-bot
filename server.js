@@ -505,9 +505,18 @@ app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.h
 // Count nearby drivers (rider sees this on home screen)
 app.get("/api/nearby", (req, res) => {
   const { lat, lng } = req.query;
-  if (!lat || !lng) return res.json({ count: 0, drivers: [] });
-  const nearby = findNearbyDrivers({ lat: +lat, lng: +lng }, [...drivers.values()], { maxKm: 5, limit: 10 });
-  res.json({ count: nearby.length, drivers: nearby.map(d => ({ name: d.name, distanceKm: d.distanceKm })) });
+  if (!lat || !lng) return res.json({ count: 0, dots: [] });
+  const nearby = findNearbyDrivers({ lat: +lat, lng: +lng }, [...drivers.values()], { maxKm: MAX_RADIUS_KM, limit: 10 });
+  res.json({
+    count: nearby.length,
+    closestKm: nearby.length > 0 ? +nearby[0].distanceKm.toFixed(1) : null,
+    closestEta: nearby.length > 0 ? Math.max(2, Math.round((nearby[0].distanceKm * 1.4) / 20 * 60)) : null,
+    // Approximate locations for map dots (rounded to ~100m for privacy)
+    dots: nearby.map(d => ({
+      lat: Math.round(d.location.lat * 1000) / 1000,
+      lng: Math.round(d.location.lng * 1000) / 1000,
+    })),
+  });
 });
 
 // Rider requests a ride via the app
