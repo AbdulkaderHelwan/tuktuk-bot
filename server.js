@@ -500,14 +500,17 @@ function getMailTransporter() {
   if (mailTransporter) return mailTransporter;
   const nodemailer = require("nodemailer");
   mailTransporter = nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,           // STARTTLS port — more commonly allowed than 465
+    secure: false,       // upgrade to TLS via STARTTLS
     auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
-    pool: true,          // reuse connection between sends
+    pool: true,
     maxConnections: 3,
     maxMessages: 100,
     connectionTimeout: 20000,
     greetingTimeout: 15000,
     socketTimeout: 30000,
+    tls: { rejectUnauthorized: true },
   });
   // Verify connection on startup so we know early if creds are wrong
   mailTransporter.verify((err) => {
