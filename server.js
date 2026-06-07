@@ -18,9 +18,9 @@ const {
   VERIFY_TOKEN,
   OLLAMA_API_KEY,
   OLLAMA_MODEL = "gemma3:4b",
-  BREVO_API_KEY,
-  BREVO_SENDER_EMAIL,
-  BREVO_SENDER_NAME = "Wasselni",
+  GMAIL_USER,
+  GMAIL_APP_PASSWORD,
+  GMAIL_SENDER_NAME = "Wasselni",
   PORT = 3000,
   BASE_URL = "",
 } = process.env;
@@ -63,8 +63,8 @@ async function checkConfig() {
   console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
   console.log(`OLLAMA_API_KEY:  ${OLLAMA_API_KEY ? "set" : "not set — AI disabled"}`);
   console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
-  console.log(`BREVO_API_KEY:   ${BREVO_API_KEY ? "set" : "not set — codes will print to console"}`);
-  console.log(`BREVO_SENDER:    ${BREVO_SENDER_EMAIL ? `${BREVO_SENDER_NAME} <${BREVO_SENDER_EMAIL}>` : "not set"}`);
+  console.log(`GMAIL_USER:      ${GMAIL_USER || "not set"}`);
+  console.log(`GMAIL_APP_PASS:  ${GMAIL_APP_PASSWORD ? "set" : "not set — codes will print to console"}`);
   console.log(`MATCHING:        ${MAX_DRIVERS_PER_RIDE} drivers max, ${MAX_RADIUS_KM}km radius`);
   console.log(`FARE:            ${FARE_BASE_LBP.toLocaleString()} LBP base + ${FARE_PER_KM_LBP.toLocaleString()} LBP/km`);
   try {
@@ -492,38 +492,43 @@ function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (r
 const verificationCodes = new Map(); // email -> { code, expiresAt }
 const sessions = new Map();           // token -> { email, name, createdAt }
 
+// Set up Gmail SMTP transporter (lazy)
+let mailTransporter = null;
+function getMailTransporter() {
+  if (!GMAIL_USER || !GMAIL_APP_PASSWORD) return null;
+  if (mailTransporter) return mailTransporter;
+  const nodemailer = require("nodemailer");
+  mailTransporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
+  });
+  return mailTransporter;
+}
+
 async function sendVerificationEmail(email, code) {
-  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
-    console.log(`[NO BREVO CONFIG] Verification code for ${email}: ${code}`);
-    return true; // pretend success in dev mode
+  const transporter = getMailTransporter();
+  if (!transporter) {
+    console.log(`[NO GMAIL CONFIG] Verification code for ${email}: ${code}`);
+    return true;
   }
   try {
-    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "api-key": BREVO_API_KEY,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
-      body: JSON.stringify({
-        sender: { name: BREVO_SENDER_NAME, email: BREVO_SENDER_EMAIL },
-        to: [{ email }],
-        subject: `Your Wasselni code: ${code}`,
-        htmlContent: `
-          <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0a0e1a;color:#fff;border-radius:16px">
-            <div style="font-size:48px;text-align:center;margin-bottom:8px">🛺</div>
-            <h1 style="text-align:center;color:#FFB547;margin:0 0 8px;font-size:28px;font-family:Georgia,serif">Wasselni</h1>
-            <p style="text-align:center;color:#7C7C8A;margin:0 0 32px;font-size:14px">Your nearest tuk-tuk, one tap away</p>
-            <p style="font-size:16px;margin-bottom:16px">Your verification code is:</p>
-            <div style="background:linear-gradient(135deg,#FF8C42,#FFB547);color:#0a0e1a;font-size:36px;font-weight:bold;letter-spacing:8px;padding:24px;text-align:center;border-radius:12px;margin:16px 0">${code}</div>
-            <p style="color:#7C7C8A;font-size:13px;margin-top:24px">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
-          </div>`,
-      }),
+    await transporter.sendMail({
+      from: `"${GMAIL_SENDER_NAME}" <${GMAIL_USER}>`,
+      to: email,
+      subject: `Your Wasselni code: ${code}`,
+      html: `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:480px;margin:0 auto;padding:32px;background:#0a0e1a;color:#fff;border-radius:16px">
+          <div style="font-size:48px;text-align:center;margin-bottom:8px">🛺</div>
+          <h1 style="text-align:center;color:#FFB547;margin:0 0 8px;font-size:28px;font-family:Georgia,serif">Wasselni</h1>
+          <p style="text-align:center;color:#7C7C8A;margin:0 0 32px;font-size:14px">Your nearest tuk-tuk, one tap away</p>
+          <p style="font-size:16px;margin-bottom:16px">Your verification code is:</p>
+          <div style="background:linear-gradient(135deg,#FF8C42,#FFB547);color:#0a0e1a;font-size:36px;font-weight:bold;letter-spacing:8px;padding:24px;text-align:center;border-radius:12px;margin:16px 0">${code}</div>
+          <p style="color:#7C7C8A;font-size:13px;margin-top:24px">This code expires in 10 minutes. If you didn't request this, ignore this email.</p>
+        </div>`,
     });
-    if (!res.ok) { console.error("Brevo failed:", await res.text()); return false; }
-    console.log(`Verification code sent to ${email} via Brevo`);
+    console.log(`Verification code sent to ${email} via Gmail`);
     return true;
-  } catch (e) { console.error("Brevo error:", e.message); return false; }
+  } catch (e) { console.error("Gmail send error:", e.message); return false; }
 }
 
 app.post("/api/auth/request-code", async (req, res) => {
