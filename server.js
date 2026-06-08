@@ -618,7 +618,7 @@ app.post("/api/ride/:rideId/accept", (req, res) => {
   pendingOffers.delete(driverPhone);
 
   console.log(`[APP] Ride ${ride.id}: accepted by ${driverPhone}`);
-  res.json({ success: true, riderName: ride.riderName, riderLocation: ride.riderLocation });
+  res.json({ success: true, riderName: ride.riderName, riderPhone: ride.riderPhone, riderLocation: ride.riderLocation });
 });
 
 // Driver rejects ride via app
