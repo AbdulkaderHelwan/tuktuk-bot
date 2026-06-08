@@ -507,6 +507,18 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
 }
 .w-marker-sm{width:16px;height:16px;font-size:9px;border-width:1px}
 
+.tuktuk-pin{
+  filter:drop-shadow(0 3px 8px rgba(255,140,66,0.6));
+  animation:tuktuk-float 3s ease-in-out infinite;
+}
+.tuktuk-pin-sm{
+  filter:drop-shadow(0 2px 6px rgba(255,140,66,0.5));
+}
+@keyframes tuktuk-float{
+  0%,100%{transform:translateY(0)}
+  50%{transform:translateY(-3px)}
+}
+
 /* Ride type toggle */
 .ride-type-toggle{
   display:flex;background:var(--glass);border:1px solid var(--border);
@@ -663,8 +675,12 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
     <div class="panel-handle"></div>
     <div class="arrived-msg" id="arrived-msg">🎉 Your tuk-tuk is here!</div>
     <div class="match-driver">
-      <div class="match-avatar">🛺</div>
-      <div><div class="match-name" id="match-name">Driver</div><div class="match-status" id="match-status">On the way...</div></div>
+      <div class="match-avatar"><div class="w-marker" style="width:50px;height:50px;font-size:24px">W</div></div>
+      <div style="flex:1">
+        <div class="match-name" id="match-name">Driver</div>
+        <div class="match-status" id="match-status">On the way...</div>
+        <a id="match-phone" href="#" target="_blank" rel="noopener" style="display:none;color:var(--primary);font-size:13px;font-weight:600;text-decoration:none;margin-top:2px" onclick="return true">💬 Chat with driver</a>
+      </div>
     </div>
     <div class="match-stats">
       <div class="match-stat">
@@ -750,7 +766,11 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
     <div class="panel-handle"></div>
     <div class="match-driver">
       <div class="match-avatar">📍</div>
-      <div><div class="match-name" id="dr-rider-name">Rider</div><div class="match-status">Heading to pickup</div></div>
+      <div style="flex:1">
+        <div class="match-name" id="dr-rider-name">Rider</div>
+        <div class="match-status">Heading to pickup</div>
+        <a id="dr-rider-phone" href="#" target="_blank" rel="noopener" style="display:none;color:var(--primary);font-size:13px;font-weight:600;text-decoration:none;margin-top:2px">💬 Chat with rider</a>
+      </div>
     </div>
     <div class="eta-bar">
       <div><div class="eta-label">Distance</div><div class="eta-val" id="dr-dist">--</div></div>
@@ -868,8 +888,11 @@ function addPickup(map, latlng) {
   return L.marker(latlng, { icon }).addTo(map);
 }
 
+const TUKTUK_SVG = `<svg viewBox="0 0 44 36" width="44" height="36"><path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/><circle cx="14" cy="27" r="2" fill="#FFB547"/><path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/><circle cx="34" cy="27" r="2" fill="#FFB547"/><path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="2.5"/></svg>`;
+const TUKTUK_SVG_SM = `<svg viewBox="0 0 44 36" width="28" height="22"><path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="3"/><path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="3"/><path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="3"/></svg>`;
+
 function addTuktuk(map, latlng) {
-  const icon = L.divIcon({ className:'', html:'<div class="w-marker">W</div>', iconSize:[36,36], iconAnchor:[18,18] });
+  const icon = L.divIcon({ className:'', html:`<div class="tuktuk-pin">${TUKTUK_SVG}</div>`, iconSize:[44,36], iconAnchor:[22,36] });
   return L.marker(latlng, { icon }).addTo(map);
 }
 
@@ -929,8 +952,8 @@ async function checkNearby() {
     // Add markers on map
     if (riderMap && data.drivers) {
       const markerIcon = L.divIcon({
-        className: '', html: '<div class="w-marker w-marker-sm">W</div>',
-        iconSize: [16, 16], iconAnchor: [8, 8]
+        className: '', html: `<div class="tuktuk-pin-sm">${TUKTUK_SVG_SM}</div>`,
+        iconSize: [28, 22], iconAnchor: [14, 22]
       });
       data.drivers.forEach(d => {
         const m = L.marker([d.lat, d.lng], { icon: markerIcon, interactive: false }).addTo(riderMap);
@@ -988,6 +1011,14 @@ function cancelSearch() {
 function showMatched(ride) {
   showScreen('matched');
   document.getElementById('match-name').textContent = ride.driverName || 'Your Driver';
+
+  // Show driver phone if available
+  const phoneEl = document.getElementById('match-phone');
+  if (ride.driverPhone && ride.driverPhone.match(/^\d/)) {
+    phoneEl.href = `https://wa.me/${ride.driverPhone}`;
+    phoneEl.textContent = `💬 Chat with driver`;
+    phoneEl.style.display = 'inline-block';
+  }
 
   const riderLL = [ride.riderLocation.lat, ride.riderLocation.lng];
   const driverLL = ride.driverLocation ? [ride.driverLocation.lat, ride.driverLocation.lng] : riderLL;
@@ -1137,7 +1168,7 @@ async function acceptRequest() {
 
   if (data.success) {
     currentRideId = pendingRideId;
-    showDriverRide(data.riderName, data.riderLocation);
+    showDriverRide(data.riderName, data.riderPhone, data.riderLocation);
   }
 }
 
@@ -1152,9 +1183,17 @@ async function rejectRequest() {
   pendingRideId = null;
 }
 
-function showDriverRide(riderName, riderLoc) {
+function showDriverRide(riderName, riderPhone, riderLoc) {
   showScreen('driver-ride');
   document.getElementById('dr-rider-name').textContent = riderName;
+
+  // Show rider phone if it's a real phone number
+  const phoneEl = document.getElementById('dr-rider-phone');
+  if (riderPhone && riderPhone.match(/^\d/)) {
+    phoneEl.href = `https://wa.me/${riderPhone}`;
+    phoneEl.textContent = `💬 Chat with rider`;
+    phoneEl.style.display = 'inline-block';
+  }
 
   const riderLL = [riderLoc.lat, riderLoc.lng];
   if (!driverRideMap) driverRideMap = makeMap('driver-ride-map', riderLL);
