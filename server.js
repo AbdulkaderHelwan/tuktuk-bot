@@ -505,14 +505,16 @@ app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.h
 // Count nearby drivers (rider sees this on home screen)
 app.get("/api/nearby", (req, res) => {
   const { lat, lng } = req.query;
-  if (!lat || !lng) return res.json({ count: 0, dots: [] });
+  if (!lat || !lng) return res.json({ count: 0, dots: [], drivers: [] });
   const nearby = findNearbyDrivers({ lat: +lat, lng: +lng }, [...drivers.values()], { maxKm: MAX_RADIUS_KM, limit: 10 });
   res.json({
     count: nearby.length,
     closestKm: nearby.length > 0 ? +nearby[0].distanceKm.toFixed(1) : null,
     closestEta: nearby.length > 0 ? Math.max(2, Math.round((nearby[0].distanceKm * 1.4) / 20 * 60)) : null,
-    // Approximate locations for map dots (rounded to ~100m for privacy)
-    dots: nearby.map(d => ({
+    drivers: nearby.map(d => ({
+      name: d.name,
+      distanceKm: +d.distanceKm.toFixed(1),
+      etaMinutes: Math.max(2, Math.round((d.distanceKm * 1.4) / 20 * 60)),
       lat: Math.round(d.location.lat * 1000) / 1000,
       lng: Math.round(d.location.lng * 1000) / 1000,
     })),
@@ -521,7 +523,7 @@ app.get("/api/nearby", (req, res) => {
 
 // Rider requests a ride via the app
 app.post("/api/ride/request", (req, res) => {
-  const { riderPhone, riderName, lat, lng } = req.body;
+  const { riderPhone, riderName, lat, lng, rideType } = req.body;
   if (!riderPhone || !lat || !lng) return res.json({ error: "missing fields" });
 
   const nearby = findNearbyDrivers({ lat, lng }, [...drivers.values()], { maxKm: MAX_RADIUS_KM, limit: MAX_DRIVERS_PER_RIDE });
@@ -530,6 +532,7 @@ app.post("/api/ride/request", (req, res) => {
   const rideId = generateRideId();
   const ride = {
     id: rideId, riderPhone, riderName: riderName || "Rider", riderLocation: { lat, lng },
+    rideType: rideType || "ride", // "ride" or "delivery"
     status: "pending", pingedDrivers: nearby.map(d => d.phone),
     acceptedBy: null, driverName: null, driverLocation: null, lastUpdate: null, timer: null,
   };
@@ -549,7 +552,7 @@ app.get("/api/ride/:rideId", (req, res) => {
   if (!ride) return res.json({ error: "not found" });
 
   const result = {
-    id: ride.id, status: ride.status,
+    id: ride.id, status: ride.status, rideType: ride.rideType || "ride",
     riderName: ride.riderName, riderLocation: ride.riderLocation,
     driverName: ride.driverName, driverPhone: ride.acceptedBy,
     driverLocation: ride.driverLocation, lastUpdate: ride.lastUpdate,
@@ -589,6 +592,7 @@ app.get("/api/driver/:phone/requests", (req, res) => {
       rideId: ride.id,
       riderName: ride.riderName,
       riderLocation: ride.riderLocation,
+      rideType: ride.rideType || "ride",
       distanceKm: dist ? +dist.toFixed(2) : null,
       etaMinutes: dist ? Math.max(2, Math.round((dist * 1.4) / 20 * 60)) : null,
       fareEstimateLBP: fareLBP,
