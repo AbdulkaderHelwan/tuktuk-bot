@@ -491,6 +491,62 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
 .complete-title{font-family:'Fraunces',serif;font-size:38px;font-weight:400;letter-spacing:-0.04em;color:var(--text);margin-bottom:8px}
 .complete-sub{color:var(--muted);font-size:14px;margin-bottom:40px;max-width:280px;line-height:1.5}
 
+/* Custom tuk-tuk icon (replaces generic emoji) */
+.wasselni-icon{display:inline-block}
+.wasselni-icon svg{display:block}
+.wasselni-icon-lg svg{width:96px;height:80px;filter:drop-shadow(0 8px 40px rgba(255,140,66,0.4))}
+.wasselni-icon-sm svg{width:28px;height:24px}
+
+.w-marker{
+  width:36px;height:36px;border-radius:50%;
+  background:linear-gradient(135deg,var(--primary),var(--accent));
+  border:2px solid rgba(255,255,255,0.3);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Fraunces',serif;font-size:18px;font-weight:700;color:#0a0e1a;
+  box-shadow:0 4px 16px rgba(255,140,66,0.5);
+}
+.w-marker-sm{width:16px;height:16px;font-size:9px;border-width:1px}
+
+/* Ride type toggle */
+.ride-type-toggle{
+  display:flex;background:var(--glass);border:1px solid var(--border);
+  border-radius:14px;padding:4px;margin-bottom:14px;
+}
+.ride-type-btn{
+  flex:1;padding:12px 8px;border-radius:10px;
+  background:transparent;color:var(--muted);
+  font-size:13px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  transition:all .2s;
+}
+.ride-type-btn.active{
+  background:linear-gradient(135deg,rgba(255,140,66,0.15),rgba(255,181,71,0.1));
+  color:var(--text);border:1px solid rgba(255,140,66,0.3);
+}
+.ride-type-icon{font-size:16px}
+
+/* Driver list */
+.driver-list{
+  max-height:120px;overflow-y:auto;margin-bottom:14px;
+  display:flex;flex-direction:column;gap:6px;
+  scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.1) transparent;
+}
+.driver-card{
+  display:flex;align-items:center;gap:10px;
+  background:var(--glass);border:1px solid var(--border);
+  border-radius:12px;padding:10px 12px;
+}
+.driver-card-avatar{
+  width:32px;height:32px;border-radius:50%;
+  background:linear-gradient(135deg,var(--primary),var(--accent));
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Fraunces',serif;font-size:14px;font-weight:700;color:#0a0e1a;
+  flex-shrink:0;
+}
+.driver-card-info{flex:1;min-width:0}
+.driver-card-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.driver-card-dist{font-size:11px;color:var(--muted)}
+
 /* Leaflet overrides */
 .leaflet-control-attribution{display:none!important}
 .leaflet-control-zoom{display:none!important}
@@ -541,7 +597,7 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
 <div id="welcome" class="screen">
   <button class="signout-chip" onclick="logout()">Sign out</button>
   <div class="welcome-hero">
-    <div class="welcome-logo">🛺</div>
+    <div class="welcome-logo"><svg viewBox="0 0 120 100" width="120" height="100"><path d="M25 72 a14 14 0 1 0 28 0 a14 14 0 1 0-28 0" fill="none" stroke="#FF8C42" stroke-width="3.5"/><circle cx="39" cy="72" r="4" fill="#FFB547"/><path d="M82 72 a14 14 0 1 0 28 0 a14 14 0 1 0-28 0" fill="none" stroke="#FF8C42" stroke-width="3.5"/><circle cx="96" cy="72" r="4" fill="#FFB547"/><path d="M39 58 L39 35 Q39 22 52 22 L75 22 L92 42 L92 58" fill="none" stroke="#FF8C42" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M44 22 Q58 2 78 22" fill="none" stroke="#FFB547" stroke-width="3" stroke-linecap="round"/><path d="M39 58 L96 58" stroke="#FF8C42" stroke-width="3.5"/><line x1="67" y1="22" x2="67" y2="42" stroke="#FFB547" stroke-width="2" opacity="0.5"/><line x1="55" y1="42" x2="85" y2="42" stroke="#FFB547" stroke-width="2" opacity="0.5"/></svg></div>
     <div class="welcome-title">Wasselni</div>
     <div class="welcome-sub" id="user-greeting">Your nearest tuk-tuk, one tap away</div>
     <div class="role-buttons">
@@ -570,8 +626,17 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
   <div id="rider-map"></div>
   <div class="rider-panel">
     <div class="panel-handle"></div>
-    <div class="rider-header"><div class="logo">🛺</div><div class="name">Wasselni</div></div>
+    <div class="rider-header"><div class="logo"><div class="w-marker" style="width:28px;height:28px;font-size:14px">W</div></div><div class="name">Wasselni</div></div>
     <div class="nearby-count" id="nearby-count"><span class="nearby-dot"></span>Looking for drivers nearby...</div>
+    <div class="driver-list" id="driver-list"></div>
+    <div class="ride-type-toggle">
+      <button class="ride-type-btn active" id="type-ride" onclick="setRideType('ride')">
+        <span class="ride-type-icon">🧑</span> Ride
+      </button>
+      <button class="ride-type-btn" id="type-delivery" onclick="setRideType('delivery')">
+        <span class="ride-type-icon">📦</span> Delivery
+      </button>
+    </div>
     <button class="btn-primary" id="find-btn" onclick="requestRide()">Find a TukTuk</button>
   </div>
 </div>
@@ -644,6 +709,7 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
     <div class="request-card">
       <div class="req-emoji">🔔</div>
       <div class="req-title">New Ride Request</div>
+      <div id="req-type-badge" style="display:inline-block;background:linear-gradient(135deg,var(--primary),var(--accent));color:#0a0e1a;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">🧑 Ride</div>
       <div class="req-rider" id="req-rider">Rider</div>
       <div class="req-stats">
         <div class="req-stat">
@@ -712,6 +778,7 @@ let driverMarker = null, pickupMarker = null, routeLine = null;
 let driverWatchId = null, driverStartTime = null, driverUpdates = 0, driverTimer = null;
 let pollInterval = null, driverPollInterval = null;
 let pendingRideId = null;
+let selectedRideType = 'ride'; // "ride" or "delivery"
 
 // ===== AUTH =====
 function checkSession() {
@@ -802,8 +869,14 @@ function addPickup(map, latlng) {
 }
 
 function addTuktuk(map, latlng) {
-  const icon = L.divIcon({ className:'', html:'<div class="tuktuk-marker">🛺</div>', iconSize:[32,32], iconAnchor:[16,16] });
+  const icon = L.divIcon({ className:'', html:'<div class="w-marker">W</div>', iconSize:[36,36], iconAnchor:[18,18] });
   return L.marker(latlng, { icon }).addTo(map);
+}
+
+function setRideType(type) {
+  selectedRideType = type;
+  document.getElementById('type-ride').classList.toggle('active', type === 'ride');
+  document.getElementById('type-delivery').classList.toggle('active', type === 'delivery');
 }
 
 // ===== RIDER =====
@@ -821,15 +894,53 @@ function initRider() {
   }, { enableHighAccuracy: true });
 }
 
+let nearbyMarkers = [];
+
 async function checkNearby() {
   if (!myLocation) return;
   const data = await api(`/api/nearby?lat=${myLocation[0]}&lng=${myLocation[1]}`);
   const el = document.getElementById('nearby-count');
+  const listEl = document.getElementById('driver-list');
+
+  // Clear old markers
+  nearbyMarkers.forEach(m => riderMap.removeLayer(m));
+  nearbyMarkers = [];
+
   if (data.count > 0) {
-    el.innerHTML = `<span class="nearby-dot"></span> ${data.count} tuk-tuk${data.count>1?'s':''} nearby`;
+    const closest = data.closestKm < 1
+      ? `${Math.round(data.closestKm * 1000)}m`
+      : `${data.closestKm}km`;
+    el.innerHTML = `<span class="nearby-dot"></span> ${data.count} driver${data.count>1?'s':''} nearby · closest ${closest} (~${data.closestEta}min)`;
     document.getElementById('find-btn').disabled = false;
+
+    // Populate driver list
+    listEl.innerHTML = data.drivers.map(d => {
+      const dist = d.distanceKm < 1 ? `${Math.round(d.distanceKm * 1000)}m` : `${d.distanceKm}km`;
+      const initial = (d.name || 'D')[0].toUpperCase();
+      return `<div class="driver-card">
+        <div class="driver-card-avatar">${initial}</div>
+        <div class="driver-card-info">
+          <div class="driver-card-name">${d.name}</div>
+          <div class="driver-card-dist">${dist} away · ~${d.etaMinutes}min</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Add markers on map
+    if (riderMap && data.drivers) {
+      const markerIcon = L.divIcon({
+        className: '', html: '<div class="w-marker w-marker-sm">W</div>',
+        iconSize: [16, 16], iconAnchor: [8, 8]
+      });
+      data.drivers.forEach(d => {
+        const m = L.marker([d.lat, d.lng], { icon: markerIcon, interactive: false }).addTo(riderMap);
+        nearbyMarkers.push(m);
+      });
+    }
   } else {
     el.textContent = 'No tuk-tuks nearby right now — try again soon';
+    listEl.innerHTML = '';
+    document.getElementById('find-btn').disabled = true;
   }
 }
 
@@ -841,7 +952,7 @@ async function requestRide() {
   showScreen('searching');
   const data = await api('/api/ride/request', {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ riderPhone: myEmail, riderName: myName, lat: myLocation[0], lng: myLocation[1] })
+    body: JSON.stringify({ riderPhone: myEmail, riderName: myName, lat: myLocation[0], lng: myLocation[1], rideType: selectedRideType })
   });
 
   if (data.error) {
@@ -991,6 +1102,11 @@ async function checkForRequests() {
     pendingRideId = data.pending.rideId;
     document.getElementById('req-rider').textContent = data.pending.riderName || 'Rider';
 
+    // Ride type badge
+    const type = data.pending.rideType || 'ride';
+    document.getElementById('req-type-badge').innerHTML = type === 'delivery'
+      ? '📦 Delivery' : '🧑 Ride';
+
     // Distance
     const km = data.pending.distanceKm;
     document.getElementById('req-dist').textContent = km !== null
@@ -1099,3 +1215,4 @@ document.getElementById('auth-name-input').addEventListener('keydown', e => { if
 document.getElementById('auth-phone-input').addEventListener('keydown', e => { if (e.key === 'Enter') simpleRegister(); });
 </script>
 </body>
+</html>
