@@ -777,16 +777,10 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
       <div><div class="eta-label">Distance</div><div class="eta-val" id="dr-dist">--</div></div>
       <div style="text-align:right"><div class="eta-label">ETA</div><div class="eta-val"><span id="dr-eta">--</span><span style="font-size:14px;color:var(--muted);margin-left:4px">min</span></div></div>
     </div>
-    <div style="display:flex;gap:10px;margin-bottom:10px">
-      <a id="nav-google" href="#" target="_blank" rel="noopener"
-        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#4285F4,#34A853);color:#fff;border-radius:14px;padding:14px;font-size:14px;font-weight:700;text-decoration:none">
-        🗺 Google Maps
-      </a>
-      <a id="nav-waze" href="#" target="_blank" rel="noopener"
-        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#33CCFF,#1AC0F2);color:#fff;border-radius:14px;padding:14px;font-size:14px;font-weight:700;text-decoration:none">
-        🚗 Waze
-      </a>
-    </div>
+    <a id="nav-google" href="#" target="_blank" rel="noopener"
+      style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#4285F4,#34A853);color:#fff;border-radius:14px;padding:14px;font-size:15px;font-weight:700;text-decoration:none;margin-bottom:10px">
+      🗺 Navigate with Google Maps
+    </a>
     <button class="btn-primary" onclick="driverComplete()">Ride Complete</button>
   </div>
 </div>
@@ -1343,9 +1337,7 @@ function showDriverRide(riderName, riderPhone, riderLoc) {
 
   // Set navigation links immediately
   const gMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${riderLoc.lat},${riderLoc.lng}`;
-  const wazeUrl = `https://waze.com/ul?ll=${riderLoc.lat},${riderLoc.lng}&navigate=yes`;
   document.getElementById('nav-google').href = gMapsUrl;
-  document.getElementById('nav-waze').href = wazeUrl;
 
   if (!driverRideMap) driverRideMap = makeMap('driver-ride-map', riderLL);
   else driverRideMap.setCenter({ lat: riderLL[0], lng: riderLL[1] });
