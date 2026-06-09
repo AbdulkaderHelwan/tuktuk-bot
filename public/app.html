@@ -861,6 +861,32 @@ function logout() {
   showScreen('auth-email');
 }
 
+// ===== PUSH NOTIFICATIONS =====
+async function subscribeToPush() {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+  if (!window._vapidKey) return;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') { console.log('Push permission denied'); return; }
+
+    // Convert VAPID key
+    const key = window._vapidKey;
+    const keyBytes = Uint8Array.from(atob(key.replace(/-/g,'+').replace(/_/g,'/')), c => c.charCodeAt(0));
+
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes });
+    }
+
+    await api('/api/push/subscribe', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ phone: myPhone, subscription: sub.toJSON() })
+    });
+    console.log('Push subscription saved');
+  } catch(e) { console.warn('Push subscribe failed:', e.message); }
+}
+
 // ===== NAV =====
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -1215,13 +1241,16 @@ function completeRide() {
 // ===== DRIVER =====
 function startDriver() {
   if (!myEmail) { showScreen('auth-email'); return; }
-  myPhone = myEmail; // use email as driver identifier
+  myPhone = myEmail;
 
-  // Register driver
+  // Register driver on server
   api('/api/driver/location', {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ phone: myPhone, lat: 0, lng: 0 })
   });
+
+  // Subscribe to push notifications
+  subscribeToPush();
 
   showScreen('driver-online');
 
@@ -1406,6 +1435,7 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').cat
 async function initApp() {
   try {
     const config = await fetch('/api/config').then(r => r.json());
+    window._vapidKey = config.vapidPublicKey;
     if (config.googleMapsKey) {
       await new Promise((resolve, reject) => {
         window._gmapsReady = resolve;
@@ -1415,11 +1445,28 @@ async function initApp() {
         s.onerror = reject;
         document.head.appendChild(s);
       });
-      console.log('Google Maps loaded');
-    } else {
-      console.warn('No Google Maps key — maps will not work');
     }
-  } catch(e) { console.warn('Maps load failed:', e.message); }
+  } catch(e) { console.warn('Config load failed:', e.message); }
+
+  // Verify session is still valid on server (survives server restarts now)
+  myToken = localStorage.getItem('wasselni_token') || '';
+  myEmail = localStorage.getItem('wasselni_email') || '';
+  myName = localStorage.getItem('wasselni_name') || '';
+
+  if (myToken) {
+    try {
+      const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${myToken}` } });
+      const data = await res.json();
+      if (data.error) {
+        // Session invalid — clear and re-login
+        localStorage.removeItem('wasselni_token');
+        localStorage.removeItem('wasselni_email');
+        localStorage.removeItem('wasselni_name');
+        myToken = ''; myEmail = ''; myName = '';
+      }
+    } catch {}
+  }
+
   checkSession();
 }
 
