@@ -779,6 +779,16 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
       <div><div class="eta-label">Distance</div><div class="eta-val" id="dr-dist">--</div></div>
       <div style="text-align:right"><div class="eta-label">ETA</div><div class="eta-val"><span id="dr-eta">--</span><span style="font-size:14px;color:var(--muted);margin-left:4px">min</span></div></div>
     </div>
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <a id="nav-google" href="#" target="_blank" rel="noopener"
+        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#4285F4,#34A853);color:#fff;border-radius:14px;padding:14px;font-size:14px;font-weight:700;text-decoration:none">
+        🗺 Google Maps
+      </a>
+      <a id="nav-waze" href="#" target="_blank" rel="noopener"
+        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:linear-gradient(135deg,#33CCFF,#1AC0F2);color:#fff;border-radius:14px;padding:14px;font-size:14px;font-weight:700;text-decoration:none">
+        🚗 Waze
+      </a>
+    </div>
     <button class="btn-primary" onclick="driverComplete()">Ride Complete</button>
   </div>
 </div>
@@ -1247,11 +1257,36 @@ function showDriverRide(riderName, riderPhone, riderLoc) {
   }
 
   const riderLL = [riderLoc.lat, riderLoc.lng];
+
+  // Set navigation links immediately
+  const gMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${riderLoc.lat},${riderLoc.lng}`;
+  const wazeUrl = `https://waze.com/ul?ll=${riderLoc.lat},${riderLoc.lng}&navigate=yes`;
+  document.getElementById('nav-google').href = gMapsUrl;
+  document.getElementById('nav-waze').href = wazeUrl;
+
   if (!driverRideMap) driverRideMap = makeMap('driver-ride-map', riderLL);
   else driverRideMap.setView(riderLL, 15);
 
   const pickup = addPickup(driverRideMap, riderLL);
   let myMarker = null;
+  let roadRoute = null;
+
+  async function drawRoadRoute(from, to) {
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?geometries=geojson&overview=full`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.routes?.[0]?.geometry?.coordinates) {
+        const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+        if (roadRoute) driverRideMap.removeLayer(roadRoute);
+        roadRoute = L.polyline(coords, { color: '#FF8C42', weight: 4, opacity: 0.8 }).addTo(driverRideMap);
+      }
+    } catch (e) {
+      // Fallback to straight line
+      if (roadRoute) driverRideMap.removeLayer(roadRoute);
+      roadRoute = L.polyline([from, to], { color:'#FF8C42', weight:3, dashArray:'8,8', opacity:0.7 }).addTo(driverRideMap);
+    }
+  }
 
   // Keep tracking driver GPS and showing route
   const trackInterval = setInterval(async () => {
@@ -1259,9 +1294,17 @@ function showDriverRide(riderName, riderPhone, riderLoc) {
     if (r.status !== 'accepted') { clearInterval(trackInterval); return; }
     if (myLocation) {
       if (myMarker) myMarker.setLatLng(myLocation);
-      else { myMarker = addTuktuk(driverRideMap, myLocation); driverRideMap.fitBounds([myLocation, riderLL], {padding:[60,60]}); }
-      if (routeLine) routeLine.setLatLngs([myLocation, riderLL]);
-      else routeLine = L.polyline([myLocation, riderLL], {color:'#f2994a',weight:3,dashArray:'8,8',opacity:0.7}).addTo(driverRideMap);
+      else {
+        myMarker = addTuktuk(driverRideMap, myLocation);
+        driverRideMap.fitBounds([myLocation, riderLL], {padding:[60,60]});
+        drawRoadRoute(myLocation, riderLL);
+      }
+
+      // Redraw route every 30s as driver moves
+      if (myMarker && Math.floor(Date.now() / 30000) !== (myMarker._lastRouteTime || 0)) {
+        myMarker._lastRouteTime = Math.floor(Date.now() / 30000);
+        drawRoadRoute(myLocation, riderLL);
+      }
 
       const km = distKm(myLocation, riderLL);
       const m = Math.round(km * 1000);
