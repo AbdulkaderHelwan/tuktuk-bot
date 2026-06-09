@@ -10,8 +10,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -559,10 +557,10 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
 .driver-card-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .driver-card-dist{font-size:11px;color:var(--muted)}
 
-/* Leaflet overrides */
-.leaflet-control-attribution{display:none!important}
-.leaflet-control-zoom{display:none!important}
-.leaflet-container{background:#0a0e1a!important;font-family:inherit!important}
+/* Map containers */
+#rider-map, #track-map, #driver-map, #driver-ride-map {
+  flex:1;min-height:0;background:#0a0e1a;
+}
 
 .pickup-pulse{
   width:24px;height:24px;background:var(--success);border:3px solid #fff;border-radius:50%;
@@ -888,25 +886,76 @@ async function api(path, opts) {
   return res.json();
 }
 
+// ===== GOOGLE MAPS =====
+const DARK_STYLE = [
+  {elementType:'geometry',stylers:[{color:'#0a0e1a'}]},
+  {elementType:'labels.text.fill',stylers:[{color:'#7c7c8a'}]},
+  {elementType:'labels.text.stroke',stylers:[{color:'#0a0e1a'}]},
+  {featureType:'road',elementType:'geometry',stylers:[{color:'#1a1f35'}]},
+  {featureType:'road',elementType:'geometry.stroke',stylers:[{color:'#0f1424'}]},
+  {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#2a2f4a'}]},
+  {featureType:'road.highway',elementType:'labels.text.fill',stylers:[{color:'#FF8C42'}]},
+  {featureType:'road.local',elementType:'labels.text.fill',stylers:[{color:'#555570'}]},
+  {featureType:'water',elementType:'geometry',stylers:[{color:'#050a15'}]},
+  {featureType:'poi',stylers:[{visibility:'off'}]},
+  {featureType:'transit',stylers:[{visibility:'off'}]},
+  {featureType:'administrative',elementType:'geometry',stylers:[{color:'#1a1f35'}]},
+  {featureType:'administrative.country',elementType:'labels.text.fill',stylers:[{color:'#9e9ea0'}]},
+  {featureType:'administrative.locality',elementType:'labels.text.fill',stylers:[{color:'#bdbdcc'}]},
+];
+
 function makeMap(divId, center, zoom) {
-  const m = L.map(divId, { zoomControl: false, attributionControl: false }).setView(center, zoom || 15);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    maxZoom: 19, subdomains: 'abcd', attribution: ''
-  }).addTo(m);
-  return m;
+  return new google.maps.Map(document.getElementById(divId), {
+    center: { lat: center[0], lng: center[1] },
+    zoom: zoom || 15,
+    styles: DARK_STYLE,
+    disableDefaultUI: true,
+    gestureHandling: 'greedy',
+  });
 }
+
+const TUKTUK_SVG_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+  `<svg viewBox="0 0 44 36" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/>
+    <circle cx="14" cy="27" r="2" fill="#FFB547"/>
+    <path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/>
+    <circle cx="34" cy="27" r="2" fill="#FFB547"/>
+    <path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/>
+    <line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="2.5"/>
+  </svg>`
+);
+
+const TUKTUK_SM_URL = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+  `<svg viewBox="0 0 44 36" xmlns="http://www.w3.org/2000/svg">
+    <path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="3"/>
+    <path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="3"/>
+    <path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/>
+    <line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="3"/>
+  </svg>`
+);
 
 function addPickup(map, latlng) {
-  const icon = L.divIcon({ className:'', html:'<div class="pickup-pulse"></div>', iconSize:[20,20], iconAnchor:[10,10] });
-  return L.marker(latlng, { icon }).addTo(map);
+  return new google.maps.Marker({
+    position: { lat: latlng[0], lng: latlng[1] },
+    map,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 10, fillColor: '#5EEAD4', fillOpacity: 1,
+      strokeColor: '#fff', strokeWeight: 2.5,
+    },
+    title: 'Pickup location',
+  });
 }
 
-const TUKTUK_SVG = `<svg viewBox="0 0 44 36" width="44" height="36"><path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/><circle cx="14" cy="27" r="2" fill="#FFB547"/><path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/><circle cx="34" cy="27" r="2" fill="#FFB547"/><path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="2.5"/></svg>`;
-const TUKTUK_SVG_SM = `<svg viewBox="0 0 44 36" width="28" height="22"><path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="3"/><path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="3"/><path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="3"/></svg>`;
-
 function addTuktuk(map, latlng) {
-  const icon = L.divIcon({ className:'', html:`<div class="tuktuk-pin">${TUKTUK_SVG}</div>`, iconSize:[44,36], iconAnchor:[22,36] });
-  return L.marker(latlng, { icon }).addTo(map);
+  return new google.maps.Marker({
+    position: { lat: latlng[0], lng: latlng[1] },
+    map,
+    icon: { url: TUKTUK_SVG_URL, scaledSize: new google.maps.Size(44, 36), anchor: new google.maps.Point(22, 36) },
+    title: 'TukTuk',
+  });
 }
 
 function setRideType(type) {
@@ -925,12 +974,10 @@ function initRider() {
     return;
   }
 
-  // watchPosition keeps improving accuracy over time (important on laptop)
   riderWatchId = navigator.geolocation.watchPosition(pos => {
-    const accuracy = pos.coords.accuracy; // metres
+    const accuracy = pos.coords.accuracy;
     const newLoc = [pos.coords.latitude, pos.coords.longitude];
 
-    // Only auto-update map position if user hasn't manually dragged the pin
     if (!pickupDragged) {
       myLocation = newLoc;
       if (!riderMap) {
@@ -938,16 +985,15 @@ function initRider() {
         pickupMarker = addPickupDraggable(riderMap, myLocation);
         checkNearby();
       } else {
-        pickupMarker.setLatLng(myLocation);
-        riderMap.setView(myLocation, riderMap.getZoom());
+        pickupMarker.setPosition({ lat: newLoc[0], lng: newLoc[1] });
+        riderMap.setCenter({ lat: newLoc[0], lng: newLoc[1] });
       }
     }
 
-    // Show hint + accuracy on laptop (accuracy > 100m is a red flag)
     const hint = document.getElementById('location-hint');
     if (accuracy > 100) {
       hint.style.display = 'block';
-      hint.innerHTML = `📍 Accuracy: ~${Math.round(accuracy)}m — <strong>drag the pin</strong> on the map to your exact pickup spot.`;
+      hint.innerHTML = `📍 Accuracy: ~${Math.round(accuracy)}m — <strong>drag the pin</strong> to your exact pickup spot.`;
     } else {
       hint.style.display = 'none';
     }
@@ -956,24 +1002,33 @@ function initRider() {
     document.getElementById('nearby-count').textContent = '⚠️ Please enable location access and try again';
   }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
 
-  // Poll for nearby drivers every 15s
   setInterval(checkNearby, 15000);
 }
 
 function addPickupDraggable(map, latlng) {
-  const icon = L.divIcon({ className:'', html:'<div class="pickup-pulse"></div>', iconSize:[24,24], iconAnchor:[12,12] });
-  const marker = L.marker(latlng, { icon, draggable: true }).addTo(map);
-  marker.on('dragstart', () => { pickupDragged = true; });
-  marker.on('dragend', (e) => {
-    const pos = e.target.getLatLng();
-    myLocation = [pos.lat, pos.lng];
-    checkNearby(); // refresh drivers for new location
+  const marker = new google.maps.Marker({
+    position: { lat: latlng[0], lng: latlng[1] },
+    map,
+    draggable: true,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 12, fillColor: '#5EEAD4', fillOpacity: 1,
+      strokeColor: '#fff', strokeWeight: 3,
+    },
+    title: 'Drag to your exact pickup location',
+  });
+  marker.addListener('dragstart', () => { pickupDragged = true; });
+  marker.addListener('dragend', () => {
+    const pos = marker.getPosition();
+    myLocation = [pos.lat(), pos.lng()];
+    checkNearby();
     document.getElementById('location-hint').style.display = 'none';
   });
   return marker;
 }
 
 let nearbyMarkers = [];
+
 
 async function checkNearby() {
   if (!myLocation) return;
@@ -982,7 +1037,7 @@ async function checkNearby() {
   const listEl = document.getElementById('driver-list');
 
   // Clear old markers
-  nearbyMarkers.forEach(m => riderMap.removeLayer(m));
+  nearbyMarkers.forEach(m => m.setMap(null));
   nearbyMarkers = [];
 
   if (data.count > 0) {
@@ -1006,13 +1061,15 @@ async function checkNearby() {
     }).join('');
 
     // Add markers on map
+    // Add tuk-tuk markers on map
     if (riderMap && data.drivers) {
-      const markerIcon = L.divIcon({
-        className: '', html: `<div class="tuktuk-pin-sm">${TUKTUK_SVG_SM}</div>`,
-        iconSize: [28, 22], iconAnchor: [14, 22]
-      });
       data.drivers.forEach(d => {
-        const m = L.marker([d.lat, d.lng], { icon: markerIcon, interactive: false }).addTo(riderMap);
+        const m = new google.maps.Marker({
+          position: { lat: d.lat, lng: d.lng },
+          map: riderMap,
+          icon: { url: TUKTUK_SM_URL, scaledSize: new google.maps.Size(28, 22), anchor: new google.maps.Point(14, 22) },
+          clickable: false,
+        });
         nearbyMarkers.push(m);
       });
     }
@@ -1087,13 +1144,31 @@ function showMatched(ride) {
   if (!trackMap) {
     trackMap = makeMap('track-map', riderLL);
   } else {
-    trackMap.setView(riderLL, 15);
+    trackMap.setCenter({ lat: riderLL[0], lng: riderLL[1] });
   }
 
   pickupMarker = addPickup(trackMap, riderLL);
   driverMarker = addTuktuk(trackMap, driverLL);
-  routeLine = L.polyline([driverLL, riderLL], { color:'#f2994a', weight:3, dashArray:'8,8', opacity:0.7 }).addTo(trackMap);
-  trackMap.fitBounds([driverLL, riderLL], { padding:[60,60] });
+  const directionsService = new google.maps.DirectionsService();
+  const directionsRenderer = new google.maps.DirectionsRenderer({
+    map: trackMap,
+    suppressMarkers: true,
+    polylineOptions: { strokeColor: '#FF8C42', strokeWeight: 4, strokeOpacity: 0.8 }
+  });
+  routeLine = directionsRenderer;
+
+  // Fit map to show both points
+  const bounds = new google.maps.LatLngBounds();
+  bounds.extend({ lat: riderLL[0], lng: riderLL[1] });
+  bounds.extend({ lat: driverLL[0], lng: driverLL[1] });
+  trackMap.fitBounds(bounds, { top: 60, right: 20, bottom: 200, left: 20 });
+
+  // Draw initial route
+  directionsService.route({
+    origin: { lat: driverLL[0], lng: driverLL[1] },
+    destination: { lat: riderLL[0], lng: riderLL[1] },
+    travelMode: google.maps.TravelMode.DRIVING
+  }, (result, status) => { if (status === 'OK') directionsRenderer.setDirections(result); });
 
   // Poll tracking
   pollInterval = setInterval(async () => {
@@ -1101,8 +1176,16 @@ function showMatched(ride) {
     if (r.status === 'completed' || r.status === 'cancelled') { clearInterval(pollInterval); showScreen('completed'); return; }
     if (r.driverLocation) {
       const dl = [r.driverLocation.lat, r.driverLocation.lng];
-      driverMarker.setLatLng(dl);
-      routeLine.setLatLngs([dl, riderLL]);
+      driverMarker.setPosition({ lat: dl[0], lng: dl[1] });
+      // Update route
+      if (routeLine) {
+        const ds = new google.maps.DirectionsService();
+        ds.route({
+          origin: { lat: dl[0], lng: dl[1] },
+          destination: { lat: riderLL[0], lng: riderLL[1] },
+          travelMode: google.maps.TravelMode.DRIVING
+        }, (result, status) => { if (status === 'OK') routeLine.setDirections(result); });
+      }
       if (r.distanceKm !== undefined) {
         const m = Math.round(r.distanceKm * 1000);
         document.getElementById('match-dist').textContent = m < 1000 ? `${m}m` : `${r.distanceKm.toFixed(1)}km`;
@@ -1162,7 +1245,7 @@ function startDriver() {
 
     // Update map
     if (driverMarker) driverMarker.setLatLng([lat, lng]);
-    else { driverMarker = addTuktuk(driverMap, [lat, lng]); driverMap.setView([lat, lng], 15); }
+    else { driverMarker = addTuktuk(driverMap, [lat, lng]); driverMap.setCenter({ lat, lng }); driverMap.setZoom(15); }
 
     // Send to server (throttled)
     driverUpdates++;
@@ -1265,47 +1348,43 @@ function showDriverRide(riderName, riderPhone, riderLoc) {
   document.getElementById('nav-waze').href = wazeUrl;
 
   if (!driverRideMap) driverRideMap = makeMap('driver-ride-map', riderLL);
-  else driverRideMap.setView(riderLL, 15);
+  else driverRideMap.setCenter({ lat: riderLL[0], lng: riderLL[1] });
 
-  const pickup = addPickup(driverRideMap, riderLL);
+  addPickup(driverRideMap, riderLL);
   let myMarker = null;
-  let roadRoute = null;
+  const drivingService = new google.maps.DirectionsService();
+  const drivingRenderer = new google.maps.DirectionsRenderer({
+    map: driverRideMap, suppressMarkers: true,
+    polylineOptions: { strokeColor: '#FF8C42', strokeWeight: 5, strokeOpacity: 0.9 }
+  });
 
-  async function drawRoadRoute(from, to) {
-    try {
-      const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?geometries=geojson&overview=full`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.routes?.[0]?.geometry?.coordinates) {
-        const coords = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-        if (roadRoute) driverRideMap.removeLayer(roadRoute);
-        roadRoute = L.polyline(coords, { color: '#FF8C42', weight: 4, opacity: 0.8 }).addTo(driverRideMap);
-      }
-    } catch (e) {
-      // Fallback to straight line
-      if (roadRoute) driverRideMap.removeLayer(roadRoute);
-      roadRoute = L.polyline([from, to], { color:'#FF8C42', weight:3, dashArray:'8,8', opacity:0.7 }).addTo(driverRideMap);
-    }
+  function refreshRoute() {
+    if (!myLocation) return;
+    drivingService.route({
+      origin: { lat: myLocation[0], lng: myLocation[1] },
+      destination: { lat: riderLL[0], lng: riderLL[1] },
+      travelMode: google.maps.TravelMode.DRIVING
+    }, (result, status) => { if (status === 'OK') drivingRenderer.setDirections(result); });
   }
 
-  // Keep tracking driver GPS and showing route
+  // Keep tracking driver GPS and showing Google Maps route
   const trackInterval = setInterval(async () => {
     const r = await api(`/api/ride/${currentRideId}`);
     if (r.status !== 'accepted') { clearInterval(trackInterval); return; }
     if (myLocation) {
-      if (myMarker) myMarker.setLatLng(myLocation);
+      if (myMarker) myMarker.setPosition({ lat: myLocation[0], lng: myLocation[1] });
       else {
         myMarker = addTuktuk(driverRideMap, myLocation);
-        driverRideMap.fitBounds([myLocation, riderLL], {padding:[60,60]});
-        drawRoadRoute(myLocation, riderLL);
+        const bounds = new google.maps.LatLngBounds();
+        bounds.extend({ lat: myLocation[0], lng: myLocation[1] });
+        bounds.extend({ lat: riderLL[0], lng: riderLL[1] });
+        driverRideMap.fitBounds(bounds, { top: 60, right: 20, bottom: 220, left: 20 });
+        refreshRoute();
       }
-
-      // Redraw route every 30s as driver moves
       if (myMarker && Math.floor(Date.now() / 30000) !== (myMarker._lastRouteTime || 0)) {
         myMarker._lastRouteTime = Math.floor(Date.now() / 30000);
-        drawRoadRoute(myLocation, riderLL);
+        refreshRoute();
       }
-
       const km = distKm(myLocation, riderLL);
       const m = Math.round(km * 1000);
       document.getElementById('dr-dist').textContent = m < 1000 ? `${m}m` : `${km.toFixed(1)}km`;
@@ -1331,8 +1410,28 @@ function goOffline() {
 // Register service worker
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 
-// Check session on load
-checkSession();
+// Load Google Maps then start app
+async function initApp() {
+  try {
+    const config = await fetch('/api/config').then(r => r.json());
+    if (config.googleMapsKey) {
+      await new Promise((resolve, reject) => {
+        window._gmapsReady = resolve;
+        const s = document.createElement('script');
+        s.src = `https://maps.googleapis.com/maps/api/js?key=${config.googleMapsKey}&callback=_gmapsReady&libraries=places`;
+        s.async = true; s.defer = true;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+      console.log('Google Maps loaded');
+    } else {
+      console.warn('No Google Maps key — maps will not work');
+    }
+  } catch(e) { console.warn('Maps load failed:', e.message); }
+  checkSession();
+}
+
+initApp();
 
 // Update driver greeting when entering driver setup
 const originalShowScreen = showScreen;
