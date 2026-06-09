@@ -18,6 +18,7 @@ const {
   VERIFY_TOKEN,
   OLLAMA_API_KEY,
   OLLAMA_MODEL = "gemma3:4b",
+  GOOGLE_MAPS_API_KEY,
   PORT = 3000,
   BASE_URL = "",
 } = process.env;
@@ -60,6 +61,7 @@ async function checkConfig() {
   console.log(`VERIFY_TOKEN:    ${VERIFY_TOKEN ? "set" : "MISSING!"}`);
   console.log(`OLLAMA_API_KEY:  ${OLLAMA_API_KEY ? "set" : "not set — AI disabled"}`);
   console.log(`OLLAMA_MODEL:    ${OLLAMA_MODEL}`);
+  console.log(`GOOGLE_MAPS_KEY: ${GOOGLE_MAPS_API_KEY ? "set" : "not set — maps will use fallback"}`);
   console.log(`MATCHING:        ${MAX_DRIVERS_PER_RIDE} drivers max, ${MAX_RADIUS_KM}km radius`);
   console.log(`FARE:            ${FARE_BASE_LBP.toLocaleString()} LBP base + ${FARE_PER_KM_LBP.toLocaleString()} LBP/km`);
   try {
@@ -494,6 +496,11 @@ app.post("/api/auth/register", (req, res) => {
   sessions.set(token, { phone: cleanPhone, name: name.trim(), createdAt: Date.now() });
   console.log(`User registered: ${name.trim()} (${cleanPhone})`);
   res.json({ success: true, token, phone: cleanPhone, name: name.trim() });
+});
+
+// Public config for the frontend (safe to expose)
+app.get("/api/config", (req, res) => {
+  res.json({ googleMapsKey: GOOGLE_MAPS_API_KEY || null });
 });
 
 // ================= APP API (PWA uses these instead of WhatsApp) =================
