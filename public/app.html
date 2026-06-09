@@ -640,6 +640,9 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
     <div class="panel-handle"></div>
     <div class="rider-header"><div class="logo"><div class="w-marker" style="width:28px;height:28px;font-size:14px">W</div></div><div class="name">Wasselni</div></div>
     <div class="nearby-count" id="nearby-count"><span class="nearby-dot"></span>Looking for drivers nearby...</div>
+    <div id="location-hint" style="display:none;font-size:12px;color:var(--accent);margin-bottom:10px;padding:8px 12px;background:rgba(255,181,71,0.08);border:1px solid rgba(255,181,71,0.2);border-radius:10px">
+      📍 Location may be approximate on laptop. <strong>Drag the pin</strong> on the map to your exact pickup spot.
+    </div>
     <div class="driver-list" id="driver-list"></div>
     <div class="ride-type-toggle">
       <button class="ride-type-btn active" id="type-ride" onclick="setRideType('ride')">
@@ -903,18 +906,61 @@ function setRideType(type) {
 }
 
 // ===== RIDER =====
+let riderWatchId = null;
+let pickupDragged = false;
+
 function initRider() {
-  navigator.geolocation.getCurrentPosition(pos => {
-    myLocation = [pos.coords.latitude, pos.coords.longitude];
-    if (!riderMap) {
-      riderMap = makeMap('rider-map', myLocation);
-      addPickup(riderMap, myLocation);
+  if (!navigator.geolocation) {
+    document.getElementById('nearby-count').textContent = '⚠️ GPS not supported on this device';
+    return;
+  }
+
+  // watchPosition keeps improving accuracy over time (important on laptop)
+  riderWatchId = navigator.geolocation.watchPosition(pos => {
+    const accuracy = pos.coords.accuracy; // metres
+    const newLoc = [pos.coords.latitude, pos.coords.longitude];
+
+    // Only auto-update map position if user hasn't manually dragged the pin
+    if (!pickupDragged) {
+      myLocation = newLoc;
+      if (!riderMap) {
+        riderMap = makeMap('rider-map', myLocation);
+        pickupMarker = addPickupDraggable(riderMap, myLocation);
+        checkNearby();
+      } else {
+        pickupMarker.setLatLng(myLocation);
+        riderMap.setView(myLocation, riderMap.getZoom());
+      }
     }
-    checkNearby();
-    setInterval(checkNearby, 15000);
+
+    // Show hint + accuracy on laptop (accuracy > 100m is a red flag)
+    const hint = document.getElementById('location-hint');
+    if (accuracy > 100) {
+      hint.style.display = 'block';
+      hint.innerHTML = `📍 Accuracy: ~${Math.round(accuracy)}m — <strong>drag the pin</strong> on the map to your exact pickup spot.`;
+    } else {
+      hint.style.display = 'none';
+    }
+
   }, () => {
-    document.getElementById('nearby-count').textContent = '⚠️ Please enable GPS to find nearby tuk-tuks';
-  }, { enableHighAccuracy: true });
+    document.getElementById('nearby-count').textContent = '⚠️ Please enable location access and try again';
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+
+  // Poll for nearby drivers every 15s
+  setInterval(checkNearby, 15000);
+}
+
+function addPickupDraggable(map, latlng) {
+  const icon = L.divIcon({ className:'', html:'<div class="pickup-pulse"></div>', iconSize:[24,24], iconAnchor:[12,12] });
+  const marker = L.marker(latlng, { icon, draggable: true }).addTo(map);
+  marker.on('dragstart', () => { pickupDragged = true; });
+  marker.on('dragend', (e) => {
+    const pos = e.target.getLatLng();
+    myLocation = [pos.lat, pos.lng];
+    checkNearby(); // refresh drivers for new location
+    document.getElementById('location-hint').style.display = 'none';
+  });
+  return marker;
 }
 
 let nearbyMarkers = [];
@@ -1006,6 +1052,11 @@ function cancelSearch() {
   if (currentRideId) api(`/api/ride/${currentRideId}/cancel`, { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
   currentRideId = null;
   showScreen('rider-home');
+}
+
+function stopRiderWatch() {
+  if (riderWatchId !== null) { navigator.geolocation.clearWatch(riderWatchId); riderWatchId = null; }
+  pickupDragged = false;
 }
 
 function showMatched(ride) {
