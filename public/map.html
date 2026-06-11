@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0e1a">
+<title>Wasselni — Live TukTuk Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,300..900&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Manrope',sans-serif;background:#0a0e1a;color:#fff;height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+#map{flex:1;width:100%;background:#0a0e1a}
+.header{position:absolute;top:0;left:0;right:0;z-index:100;padding:20px 24px 32px;background:linear-gradient(180deg,rgba(10,14,26,0.95) 0%,transparent 100%);pointer-events:none}
+.header-inner{display:flex;align-items:center;justify-content:space-between;max-width:1200px;margin:0 auto;pointer-events:all}
+.brand{display:flex;align-items:center;gap:10px}
+.brand-name{font-family:'Fraunces',serif;font-size:26px;font-weight:400;letter-spacing:-0.04em;background:linear-gradient(135deg,#FAFAF9,#FFB547);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.header-cta{background:linear-gradient(135deg,#FF8C42,#FFB547);color:#0a0e1a;border:none;border-radius:12px;padding:10px 20px;font-size:14px;font-weight:700;cursor:pointer;text-decoration:none;box-shadow:0 4px 16px rgba(255,140,66,0.3);font-family:'Manrope',sans-serif}
+.live-badge{position:absolute;bottom:124px;left:50%;transform:translateX(-50%);z-index:100;background:rgba(10,14,26,0.9);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:24px;padding:10px 20px;display:flex;align-items:center;gap:10px;box-shadow:0 8px 32px rgba(0,0,0,0.4);white-space:nowrap}
+.live-dot{width:8px;height:8px;background:#5EEAD4;border-radius:50%;animation:blink 1.5s infinite;flex-shrink:0}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.live-count{font-size:14px;font-weight:600}
+.live-sub{font-size:12px;color:#7C7C8A}
+.bottom-panel{position:absolute;bottom:0;left:0;right:0;z-index:100;background:linear-gradient(180deg,transparent 0%,rgba(10,14,26,0.97) 45%);padding:32px 24px 28px;display:flex;flex-direction:column;align-items:center;gap:10px}
+.book-btn{background:linear-gradient(135deg,#FF8C42,#FFB547);color:#0a0e1a;border:none;border-radius:16px;padding:18px 40px;font-size:17px;font-weight:700;cursor:pointer;width:100%;max-width:400px;text-decoration:none;display:block;text-align:center;box-shadow:0 8px 32px rgba(255,140,66,0.4);font-family:'Manrope',sans-serif}
+.bottom-sub{font-size:12px;color:#7C7C8A;text-align:center}
+.fallback{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:#7C7C8A}
+.gm-style-cc,.gm-style a[href]{display:none!important}
+</style>
+</head>
+<body>
+
+<div id="map">
+  <div class="fallback" id="map-fallback">Loading live map…</div>
+</div>
+
+<div class="header">
+  <div class="header-inner">
+    <div class="brand">
+      <svg viewBox="0 0 44 36" width="36" height="30">
+        <path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/>
+        <circle cx="14" cy="27" r="2" fill="#FFB547"/>
+        <path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/>
+        <circle cx="34" cy="27" r="2" fill="#FFB547"/>
+        <path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/>
+        <line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="2.5"/>
+      </svg>
+      <div class="brand-name">Wasselni</div>
+    </div>
+    <a href="/app" class="header-cta">📱 Open App</a>
+  </div>
+</div>
+
+<div class="live-badge">
+  <div class="live-dot"></div>
+  <div>
+    <div class="live-count" id="live-count">Loading…</div>
+    <div class="live-sub">Live tuk-tuks right now</div>
+  </div>
+</div>
+
+<div class="bottom-panel">
+  <a href="/app" class="book-btn">🛺 Book a TukTuk Now</a>
+  <div class="bottom-sub">Rides &amp; deliveries — find the nearest tuk-tuk in minutes</div>
+</div>
+
+<script>
+const DARK_STYLE=[
+ {elementType:'geometry',stylers:[{color:'#0a0e1a'}]},
+ {elementType:'labels.text.fill',stylers:[{color:'#7c7c8a'}]},
+ {elementType:'labels.text.stroke',stylers:[{color:'#0a0e1a'}]},
+ {featureType:'road',elementType:'geometry',stylers:[{color:'#1a1f35'}]},
+ {featureType:'road.highway',elementType:'geometry',stylers:[{color:'#2a2f4a'}]},
+ {featureType:'road.highway',elementType:'labels.text.fill',stylers:[{color:'#FF8C42'}]},
+ {featureType:'water',elementType:'geometry',stylers:[{color:'#050a15'}]},
+ {featureType:'poi',stylers:[{visibility:'off'}]},
+ {featureType:'transit',stylers:[{visibility:'off'}]},
+];
+const TUKTUK_URL='data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(
+ `<svg viewBox="0 0 44 36" xmlns="http://www.w3.org/2000/svg"><path d="M8 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/><circle cx="14" cy="27" r="2" fill="#FFB547"/><path d="M28 27 a6 6 0 1 0 12 0 a6 6 0 1 0-12 0" fill="none" stroke="#FF8C42" stroke-width="2.5"/><circle cx="34" cy="27" r="2" fill="#FFB547"/><path d="M14 21 L14 11 Q14 5 20 5 L30 5 L38 15 L38 21" fill="none" stroke="#FF8C42" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 5 Q25 -3 33 5" fill="none" stroke="#FFB547" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="21" x2="38" y2="21" stroke="#FF8C42" stroke-width="2.5"/></svg>`);
+
+let map=null,markers=[];
+
+async function start(){
+  try{
+    const config=await fetch('/api/config').then(r=>r.json());
+    if(!config.googleMapsKey){
+      document.getElementById('map-fallback').textContent='Map unavailable — missing maps key';
+      refreshCount(); setInterval(refreshCount,30000); return;
+    }
+    await new Promise((resolve,reject)=>{
+      window._mapReady=resolve;
+      const s=document.createElement('script');
+      s.src=`https://maps.googleapis.com/maps/api/js?key=${config.googleMapsKey}&callback=_mapReady`;
+      s.async=true;s.onerror=reject;
+      document.head.appendChild(s);
+    });
+    document.getElementById('map-fallback')?.remove();
+    map=new google.maps.Map(document.getElementById('map'),{
+      center:{lat:33.89,lng:35.50},zoom:13,styles:DARK_STYLE,
+      disableDefaultUI:true,gestureHandling:'greedy',
+    });
+    refresh(); setInterval(refresh,30000);
+  }catch(e){
+    document.getElementById('map-fallback').textContent='Could not load map';
+    refreshCount(); setInterval(refreshCount,30000);
+  }
+}
+
+async function refreshCount(){
+  const data=await fetch('/api/public/drivers').then(r=>r.json()).catch(()=>({count:0}));
+  document.getElementById('live-count').textContent=
+    data.count===0?'No drivers online right now':`${data.count} driver${data.count>1?'s':''} online`;
+  return data;
+}
+
+async function refresh(){
+  const data=await refreshCount();
+  if(!map||!data.drivers)return;
+  markers.forEach(m=>m.setMap(null));markers=[];
+  const icon={url:TUKTUK_URL,scaledSize:new google.maps.Size(48,40),anchor:new google.maps.Point(24,40)};
+  data.drivers.forEach(d=>{
+    markers.push(new google.maps.Marker({position:{lat:d.lat,lng:d.lng},map,icon,title:'TukTuk'}));
+  });
+  if(data.drivers.length===1){
+    map.setCenter({lat:data.drivers[0].lat,lng:data.drivers[0].lng});map.setZoom(15);
+  }else if(data.drivers.length>1){
+    const b=new google.maps.LatLngBounds();
+    data.drivers.forEach(d=>b.extend({lat:d.lat,lng:d.lng}));
+    map.fitBounds(b,{top:110,right:40,bottom:160,left:40});
+  }
+}
+
+start();
+</script>
+</body>
+</html>
