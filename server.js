@@ -295,10 +295,96 @@ app.get("/", (req, res) => res.redirect("/app"));
 app.get("/app", (req, res) => res.sendFile(path.join(__dirname, "public", "app.html")));
 app.get("/driver", (req, res) => res.sendFile(path.join(__dirname, "public", "driver.html")));
 app.get("/track/:rideId", (req, res) => res.sendFile(path.join(__dirname, "public", "tracking.html")));
+
+// Public live map + business dashboard (safe: redirect to /app if files missing)
+app.get("/map", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "map.html"), err => { if (err) res.redirect("/app"); });
+});
+app.get("/dashboard", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "dashboard.html"), err => { if (err) res.redirect("/app"); });
+});
+
 app.get("/api/config", (req, res) => res.json({
   googleMapsKey: GOOGLE_MAPS_API_KEY || null,
   vapidPublicKey: VAPID_PUBLIC_KEY || null,
 }));
+
+// ---- Public: online tuk-tuks for the live map (approximate, no personal info) ----
+app.get("/api/public/drivers", (req, res) => {
+  const online = [...drivers.values()].filter(d => d.online && d.location);
+  res.json({
+    count: online.length,
+    drivers: online.map(d => ({
+      lat: Math.round(d.location.lat * 1000) / 1000, // ~100m precision for privacy
+      lng: Math.round(d.location.lng * 1000) / 1000,
+    })),
+  });
+});
+
+// ---- Dashboard APIs (admin password protected) ----
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "wasselni-admin";
+function requireAdmin(req, res, next) {
+  const auth = req.headers["x-admin-password"] || req.query.password;
+  if (auth !== ADMIN_PASSWORD) return res.status(401).json({ error: "Unauthorized" });
+  next();
+}
+
+app.get("/api/dashboard/stats", requireAdmin, async (req, res) => {
+  const onlineDrivers = [...drivers.values()].filter(d => d.online);
+  const activeRides = [...rides.values()].filter(r => r.status === "accepted");
+  const pendingRides = [...rides.values()].filter(r => r.status === "pending");
+  let todayRides = 0, todayEarnings = 0, totalRides = 0;
+  if (db) {
+    try {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const { data: todayData } = await db.from("rides")
+        .select("status, fare_lbp")
+        .gte("created_at", today.toISOString())
+        .eq("status", "completed");
+      todayRides = (todayData || []).length;
+      todayEarnings = (todayData || []).reduce((s, r) => s + (r.fare_lbp || 0), 0);
+      const { count } = await db.from("rides").select("*", { count: "exact", head: true }).eq("status", "completed");
+      totalRides = count || 0;
+    } catch (e) { console.error("dashboard stats db error:", e.message); }
+  }
+  res.json({
+    onlineDrivers: onlineDrivers.length,
+    activeRides: activeRides.length,
+    pendingRides: pendingRides.length,
+    todayRides,
+    todayEarningsLBP: todayEarnings,
+    todayEarningsUSD: +(todayEarnings / 90000).toFixed(1),
+    totalRides,
+  });
+});
+
+app.get("/api/dashboard/drivers", requireAdmin, (req, res) => {
+  res.json({
+    drivers: [...drivers.values()].map(d => ({
+      name: d.name, phone: d.phone, online: d.online,
+      location: d.location ? { lat: d.location.lat, lng: d.location.lng } : null,
+      lastGPS: d.lastGPS,
+      activeRide: activeDriverRide.get(d.phone) || null,
+    })),
+  });
+});
+
+app.get("/api/dashboard/rides", requireAdmin, async (req, res) => {
+  if (db) {
+    try {
+      const { data } = await db.from("rides").select("*").order("created_at", { ascending: false }).limit(30);
+      return res.json({ rides: data || [] });
+    } catch (e) { console.error("dashboard rides db error:", e.message); }
+  }
+  const recent = [...rides.values()]
+    .sort((a, b) => (b.lastUpdate || 0) - (a.lastUpdate || 0))
+    .slice(0, 30)
+    .map(r => ({
+      id: r.id, rider_name: r.riderName, driver_name: r.driverName,
+      status: r.status, ride_type: r.rideType, fare_lbp: r.fareEstimateLBP, created_at: null,
+    }));
+  res.json({ rides: recent });
+});
 
 // ============================================================
 // AUTH — persistent in Supabase
