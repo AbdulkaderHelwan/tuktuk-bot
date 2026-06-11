@@ -812,8 +812,14 @@ function checkSession() {
   myName = localStorage.getItem('wasselni_name') || '';
   if (myToken && myEmail) {
     myPhone = myEmail;
-    showScreen('welcome');
     document.getElementById('user-greeting').textContent = `Hi, ${myName}!`;
+    // If driver was online when the app closed (e.g. reopened via a ride notification),
+    // restore the driver screen so the request popup with Accept/Pass shows.
+    if (localStorage.getItem('wasselni_driver_online') === '1') {
+      startDriver();
+    } else {
+      showScreen('welcome');
+    }
   } else {
     showScreen('auth-email');
   }
@@ -1243,11 +1249,8 @@ function startDriver() {
   if (!myEmail) { showScreen('auth-email'); return; }
   myPhone = myEmail;
 
-  // Register driver on server
-  api('/api/driver/location', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ phone: myPhone, lat: 0, lng: 0 })
-  });
+  // Remember driver mode so notification taps restore this screen
+  localStorage.setItem('wasselni_driver_online', '1');
 
   // Subscribe to push notifications
   subscribeToPush();
@@ -1294,9 +1297,14 @@ function updateDriverTimer() {
     : `${m}:${String(sec).padStart(2,'0')}`;
 }
 
+let shownRideId = null; // popup already shown for this request
+
 async function checkForRequests() {
   const data = await api(`/api/driver/${myPhone}/requests`);
   if (data.pending) {
+    // Only (re)show the popup for a NEW request — don't re-trigger every poll
+    if (data.pending.rideId === shownRideId) return;
+    shownRideId = data.pending.rideId;
     pendingRideId = data.pending.rideId;
     document.getElementById('req-rider').textContent = data.pending.riderName || 'Rider';
 
@@ -1333,9 +1341,14 @@ async function acceptRequest() {
     body: JSON.stringify({ driverPhone: myPhone, driverName: myName })
   });
 
+  shownRideId = null;
   if (data.success) {
     currentRideId = pendingRideId;
     showDriverRide(data.riderName, data.riderPhone, data.riderLocation);
+  } else {
+    // Ride was taken by another driver or cancelled — resume waiting
+    pendingRideId = null;
+    driverPollInterval = setInterval(checkForRequests, 3000);
   }
 }
 
@@ -1348,6 +1361,7 @@ async function rejectRequest() {
     });
   }
   pendingRideId = null;
+  shownRideId = null;
 }
 
 function showDriverRide(riderName, riderPhone, riderLoc) {
@@ -1421,6 +1435,7 @@ async function driverComplete() {
 }
 
 function goOffline() {
+  localStorage.removeItem('wasselni_driver_online');
   if (driverWatchId) { navigator.geolocation.clearWatch(driverWatchId); driverWatchId = null; }
   if (driverTimer) clearInterval(driverTimer);
   if (driverPollInterval) clearInterval(driverPollInterval);
