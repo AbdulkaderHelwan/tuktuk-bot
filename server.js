@@ -28,7 +28,7 @@ const {
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 const RIDE_TIMEOUT_MS = 3 * 60 * 1000;
-const STALE_DRIVER_MS = 10 * 60 * 1000;
+const STALE_DRIVER_MS = (parseInt(process.env.STALE_DRIVER_MIN) || 3) * 60 * 1000; // driver offline after 3 min without GPS
 
 // ---- Supabase ----
 const db = SUPABASE_URL && SUPABASE_SERVICE_KEY
@@ -367,6 +367,22 @@ app.get("/api/dashboard/drivers", requireAdmin, (req, res) => {
       activeRide: activeDriverRide.get(d.phone) || null,
     })),
   });
+});
+
+// Wipe all ride history and driver records (memory + database)
+app.post("/api/dashboard/reset", requireAdmin, async (req, res) => {
+  rides.clear();
+  pendingOffers.clear();
+  activeDriverRide.clear();
+  drivers.clear();
+  if (db) {
+    try {
+      await db.from("rides").delete().neq("id", "");
+      await db.from("drivers").delete().neq("phone", "");
+    } catch (e) { console.error("reset db error:", e.message); }
+  }
+  console.log("ADMIN RESET: all rides and drivers cleared");
+  res.json({ success: true });
 });
 
 app.get("/api/dashboard/rides", requireAdmin, async (req, res) => {
@@ -811,17 +827,17 @@ async function expireRide(rideId) {
 function cleanupDriverOffer(phone) { const rid = pendingOffers.get(phone); if (rid) pendingOffers.delete(phone); }
 function cleanupRideOffers(rideId) { for (const [phone, rid] of pendingOffers) { if (rid === rideId) pendingOffers.delete(phone); } }
 
-// Stale driver cleanup every 2 minutes
+// Stale driver cleanup every 30 seconds
 setInterval(async () => {
   const now = Date.now();
   for (const [phone, driver] of drivers) {
     if (driver.online && driver.lastGPS && (now - driver.lastGPS > STALE_DRIVER_MS)) {
       driver.online = false;
-      console.log(`Driver ${phone} (${driver.name}) marked offline — no GPS for 10min`);
+      console.log(`Driver ${phone} (${driver.name}) marked offline — no recent GPS`);
       dbSaveDriver(driver).catch(() => {});
     }
   }
-}, 2 * 60 * 1000);
+}, 30 * 1000);
 
 // ============================================================
 // START
