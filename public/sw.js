@@ -1,4 +1,4 @@
-const CACHE = 'wasselni-v4';
+const CACHE = 'wasselni-v5';
 
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => {
@@ -37,8 +37,7 @@ self.addEventListener('push', e => {
     vibrate: [200, 100, 200, 100, 200],
     data: { rideId: data.rideId, url: self.registration.scope + 'app' },
     actions: [
-      { action: 'accept', title: '✅ Accept' },
-      { action: 'view', title: '👁 View' },
+      { action: 'view', title: '👁 View Request' },
     ],
   };
 
