@@ -76,6 +76,7 @@ input:focus{border-color:rgba(255,140,66,0.4)}
     <div style="display:flex;align-items:center;gap:8px">
       <span style="font-size:12px;color:var(--muted)" id="last-update">—</span>
       <button class="btn-sm" onclick="loadAll()">↻ Refresh</button>
+      <button class="btn-sm" style="color:var(--danger);border-color:rgba(251,113,133,0.3)" onclick="resetData()">🗑 Reset Data</button>
       <a class="btn-sm" href="/map" target="_blank">🗺 Public Map</a>
     </div>
   </div>
@@ -148,6 +149,13 @@ async function initMap(){
 }
 
 function authFetch(url){return fetch(url,{headers:{'x-admin-password':adminPwd}}).then(r=>r.json());}
+
+async function resetData(){
+  if(!confirm('Delete ALL ride history and driver records? This cannot be undone.'))return;
+  await fetch('/api/dashboard/reset',{method:'POST',headers:{'x-admin-password':adminPwd}});
+  await loadAll();
+  alert('All data cleared.');
+}
 function timeAgo(ts){if(!ts)return'—';const m=Math.floor((Date.now()-new Date(ts).getTime())/60000);if(m<1)return'now';if(m<60)return m+'m';return Math.floor(m/60)+'h';}
 
 async function loadAll(){
