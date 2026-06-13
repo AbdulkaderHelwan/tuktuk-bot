@@ -581,6 +581,28 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
   0%,100%{transform:translateY(0)}
   50%{transform:translateY(-4px)}
 }
+
+/* Google Places autocomplete dark theme */
+.pac-container{
+  background:#0f1424!important;
+  border:1px solid rgba(255,255,255,0.1)!important;
+  border-radius:12px!important;
+  margin-top:4px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5)!important;
+  font-family:'Manrope',sans-serif!important;
+  z-index:10000!important;
+}
+.pac-item{
+  padding:10px 14px!important;
+  border-top:1px solid rgba(255,255,255,0.05)!important;
+  cursor:pointer;
+  color:#FAFAF9!important;
+}
+.pac-item:first-child{border-top:none!important}
+.pac-item:hover,.pac-item-selected{background:rgba(255,140,66,0.08)!important}
+.pac-item-query{color:#FAFAF9!important;font-weight:600}
+.pac-matched{color:#FFB547!important;font-weight:700}
+.pac-icon{filter:invert(0.6)}
 </style>
 </head>
 <body>
@@ -1046,17 +1068,50 @@ function openDestModal() {
         const lat = e.latLng.lat(), lng = e.latLng.lng();
         destPickedFromMap = { lat, lng };
         if (destMarker) destMarker.setPosition({ lat, lng });
-        else destMarker = new google.maps.Marker({
-          position: { lat, lng }, map: destMap, draggable: true,
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#FF8C42', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
-        });
-        if (destMarker) {
+        else {
+          destMarker = new google.maps.Marker({
+            position: { lat, lng }, map: destMap, draggable: true,
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#FF8C42', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
+          });
           destMarker.addListener('dragend', () => {
             const p = destMarker.getPosition();
             destPickedFromMap = { lat: p.lat(), lng: p.lng() };
           });
         }
       });
+
+      // Attach Google Places autocomplete — biased to Lebanon
+      try {
+        const input = document.getElementById('dest-address-input');
+        const ac = new google.maps.places.Autocomplete(input, {
+          componentRestrictions: { country: 'lb' }, // Lebanon
+          fields: ['geometry', 'formatted_address', 'name'],
+        });
+        ac.addListener('place_changed', () => {
+          const place = ac.getPlace();
+          if (!place.geometry) return;
+          const lat = place.geometry.location.lat();
+          const lng = place.geometry.location.lng();
+          destPickedFromMap = { lat, lng };
+          destMap.setCenter({ lat, lng });
+          destMap.setZoom(16);
+          if (destMarker) destMarker.setPosition({ lat, lng });
+          else {
+            destMarker = new google.maps.Marker({
+              position: { lat, lng }, map: destMap, draggable: true,
+              icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#FF8C42', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
+            });
+            destMarker.addListener('dragend', () => {
+              const p = destMarker.getPosition();
+              destPickedFromMap = { lat: p.lat(), lng: p.lng() };
+            });
+          }
+          // Pre-fill the human-readable name + address
+          input.value = place.name && place.formatted_address && !place.formatted_address.startsWith(place.name)
+            ? `${place.name}, ${place.formatted_address}`
+            : (place.formatted_address || place.name || input.value);
+        });
+      } catch (e) { console.warn('Places autocomplete unavailable:', e.message); }
     } else {
       destMap.setCenter({ lat: center[0], lng: center[1] });
       setTimeout(() => google.maps.event.trigger(destMap, 'resize'), 100);
@@ -1065,6 +1120,10 @@ function openDestModal() {
       destMarker = new google.maps.Marker({
         position: destPickedFromMap, map: destMap, draggable: true,
         icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#FF8C42', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
+      });
+      destMarker.addListener('dragend', () => {
+        const p = destMarker.getPosition();
+        destPickedFromMap = { lat: p.lat(), lng: p.lng() };
       });
     }
   }, 200);
