@@ -650,7 +650,37 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
         <span class="ride-type-icon">📦</span> Delivery
       </button>
     </div>
+    <div id="dest-row" style="margin-bottom:12px">
+      <div id="dest-empty">
+        <button type="button" onclick="openDestModal()" style="width:100%;background:var(--glass);border:1px dashed var(--border-strong);border-radius:14px;padding:14px;color:var(--muted);text-align:left;cursor:pointer;font-family:inherit;font-size:14px">📍 <span id="dest-prompt-text">Add destination (optional for rides)</span></button>
+      </div>
+      <div id="dest-set" style="display:none;background:var(--glass);border:1px solid var(--border);border-radius:14px;padding:12px 14px;display:none;align-items:center;gap:10px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;font-weight:600;margin-bottom:3px">Destination</div>
+          <div id="dest-display" style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        </div>
+        <button type="button" onclick="openDestModal()" style="background:transparent;border:none;color:var(--primary);font-size:13px;font-weight:600;cursor:pointer;padding:6px">Edit</button>
+        <button type="button" onclick="clearDest()" style="background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:6px;line-height:1">×</button>
+      </div>
+    </div>
     <button class="btn-primary" id="find-btn" onclick="requestRide()">Find a TukTuk</button>
+  </div>
+</div>
+
+<!-- ============ DESTINATION PICKER MODAL ============ -->
+<div id="dest-modal" class="screen">
+  <div style="position:absolute;top:0;left:0;right:0;z-index:10;background:linear-gradient(180deg,rgba(10,14,26,0.96) 0%,rgba(10,14,26,0.85) 70%,transparent 100%);padding:20px 20px 28px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <button onclick="closeDestModal()" style="background:var(--glass);border:1px solid var(--border);color:var(--text);width:36px;height:36px;border-radius:50%;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center">←</button>
+      <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:500;letter-spacing:-0.02em">Where to?</div>
+    </div>
+    <input id="dest-address-input" placeholder="Type address (e.g. Achrafieh, Beirut)" style="margin-bottom:0">
+    <div style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center">— or tap on the map below to drop a pin —</div>
+  </div>
+  <div id="dest-map" style="flex:1;min-height:0"></div>
+  <div style="position:absolute;bottom:0;left:0;right:0;z-index:10;background:linear-gradient(0deg,rgba(10,14,26,0.96) 0%,transparent 100%);padding:24px 20px 26px;display:flex;flex-direction:column;gap:10px">
+    <button class="btn-primary" onclick="confirmDest()">Set Destination</button>
+    <button onclick="closeDestModal()" style="background:transparent;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:6px;font-family:inherit">Cancel</button>
   </div>
 </div>
 
@@ -692,9 +722,9 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
         <div class="eta-label">Distance</div>
         <div class="eta-val" id="match-dist">--</div>
       </div>
-      <div class="match-stat">
-        <div class="eta-label">Est. fare</div>
-        <div class="eta-val" id="match-fare">--</div>
+      <div class="match-stat" id="match-dest-card" style="display:none">
+        <div class="eta-label">To</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px" id="match-dest">--</div>
       </div>
     </div>
     <div style="display:flex;gap:10px">
@@ -728,7 +758,7 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
       <div class="req-title">New Ride Request</div>
       <div id="req-type-badge" style="display:inline-block;background:linear-gradient(135deg,var(--primary),var(--accent));color:#0a0e1a;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">🧑 Ride</div>
       <div class="req-rider" id="req-rider">Rider</div>
-      <div class="req-stats">
+      <div class="req-stats" style="grid-template-columns:1fr 1fr">
         <div class="req-stat">
           <div class="req-stat-label">Distance</div>
           <div class="req-stat-value" id="req-dist">--</div>
@@ -737,11 +767,12 @@ input:focus{border-color:rgba(255,140,66,0.4);background:rgba(255,255,255,0.06)}
           <div class="req-stat-label">ETA</div>
           <div class="req-stat-value" id="req-eta">--</div>
         </div>
-        <div class="req-stat">
-          <div class="req-stat-label">Est. fare</div>
-          <div class="req-stat-value" id="req-fare">--</div>
-        </div>
       </div>
+      <div id="req-dest-row" style="display:none;background:rgba(255,140,66,0.06);border:1px solid rgba(255,140,66,0.2);border-radius:12px;padding:10px 14px;margin-bottom:16px;text-align:left">
+        <div style="font-size:9px;color:var(--accent);text-transform:uppercase;letter-spacing:1.2px;font-weight:700;margin-bottom:4px">📍 Destination</div>
+        <div id="req-dest" style="font-size:13px;font-weight:600;color:var(--text);line-height:1.4">--</div>
+      </div>
+      <div id="req-nodest-row" style="display:none;color:var(--muted);font-size:12px;font-style:italic;margin-bottom:16px;text-align:center">No destination set — ask the rider on arrival</div>
       <div class="req-buttons">
         <button class="btn-reject" onclick="rejectRequest()">Pass</button>
         <button class="btn-accept" onclick="acceptRequest()">Accept</button>
@@ -988,6 +1019,87 @@ function setRideType(type) {
   selectedRideType = type;
   document.getElementById('type-ride').classList.toggle('active', type === 'ride');
   document.getElementById('type-delivery').classList.toggle('active', type === 'delivery');
+  // Update destination prompt
+  const prompt = document.getElementById('dest-prompt-text');
+  if (prompt) prompt.textContent = type === 'delivery'
+    ? 'Add delivery destination (required)'
+    : 'Add destination (optional for rides)';
+}
+
+// ===== DESTINATION PICKER =====
+let chosenDestination = null;     // { lat, lng, address } | null
+let destMap = null, destMarker = null, destPickedFromMap = null;
+
+function openDestModal() {
+  showScreen('dest-modal');
+  document.getElementById('dest-address-input').value = chosenDestination?.address || '';
+  destPickedFromMap = chosenDestination && chosenDestination.lat != null
+    ? { lat: chosenDestination.lat, lng: chosenDestination.lng } : null;
+
+  setTimeout(() => {
+    const center = chosenDestination?.lat != null
+      ? [chosenDestination.lat, chosenDestination.lng]
+      : (myLocation || [33.89, 35.50]);
+    if (!destMap) {
+      destMap = makeMap('dest-map', center, 14);
+      destMap.addListener('click', e => {
+        const lat = e.latLng.lat(), lng = e.latLng.lng();
+        destPickedFromMap = { lat, lng };
+        if (destMarker) destMarker.setPosition({ lat, lng });
+        else destMarker = new google.maps.Marker({
+          position: { lat, lng }, map: destMap, draggable: true,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#FF8C42', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
+        });
+        if (destMarker) {
+          destMarker.addListener('dragend', () => {
+            const p = destMarker.getPosition();
+            destPickedFromMap = { lat: p.lat(), lng: p.lng() };
+          });
+        }
+      });
+    } else {
+      destMap.setCenter({ lat: center[0], lng: center[1] });
+      setTimeout(() => google.maps.event.trigger(destMap, 'resize'), 100);
+    }
+    if (destPickedFromMap && !destMarker) {
+      destMarker = new google.maps.Marker({
+        position: destPickedFromMap, map: destMap, draggable: true,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 12, fillColor: '#FF8C42', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 3 },
+      });
+    }
+  }, 200);
+}
+
+function closeDestModal() {
+  showScreen('rider-home');
+}
+
+function confirmDest() {
+  const addr = document.getElementById('dest-address-input').value.trim();
+  if (!addr && !destPickedFromMap) {
+    alert('Please type an address or tap on the map to pick a destination.');
+    return;
+  }
+  chosenDestination = {
+    lat: destPickedFromMap?.lat ?? null,
+    lng: destPickedFromMap?.lng ?? null,
+    address: addr || null,
+  };
+  // Reflect on rider-home panel
+  document.getElementById('dest-empty').style.display = 'none';
+  const setBox = document.getElementById('dest-set');
+  setBox.style.display = 'flex';
+  document.getElementById('dest-display').textContent = addr ||
+    `📍 Pin at ${chosenDestination.lat.toFixed(3)}, ${chosenDestination.lng.toFixed(3)}`;
+  closeDestModal();
+}
+
+function clearDest() {
+  chosenDestination = null;
+  destPickedFromMap = null;
+  if (destMarker) { destMarker.setMap(null); destMarker = null; }
+  document.getElementById('dest-empty').style.display = 'block';
+  document.getElementById('dest-set').style.display = 'none';
 }
 
 // ===== RIDER =====
@@ -1108,13 +1220,24 @@ async function checkNearby() {
 
 async function requestRide() {
   if (!myLocation) return alert('GPS not available');
-  // Use authenticated user identity
   if (!myEmail) { showScreen('auth-email'); return; }
+
+  // Require destination for deliveries
+  if (selectedRideType === 'delivery' && !chosenDestination) {
+    alert('Please add a delivery destination first.');
+    openDestModal();
+    return;
+  }
 
   showScreen('searching');
   const data = await api('/api/ride/request', {
     method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ riderPhone: myEmail, riderName: myName, lat: myLocation[0], lng: myLocation[1], rideType: selectedRideType })
+    body: JSON.stringify({
+      riderPhone: myEmail, riderName: myName,
+      lat: myLocation[0], lng: myLocation[1],
+      rideType: selectedRideType,
+      destination: chosenDestination || null,
+    })
   });
 
   if (data.error) {
@@ -1196,6 +1319,16 @@ function showMatched(ride) {
     travelMode: google.maps.TravelMode.DRIVING
   }, (result, status) => { if (status === 'OK') directionsRenderer.setDirections(result); });
 
+  // Show destination if set
+  const destCard = document.getElementById('match-dest-card');
+  if (ride.destination) {
+    destCard.style.display = 'block';
+    document.getElementById('match-dest').textContent = ride.destination.address ||
+      `${ride.destination.lat.toFixed(3)}, ${ride.destination.lng.toFixed(3)}`;
+  } else {
+    destCard.style.display = 'none';
+  }
+
   // Poll tracking
   pollInterval = setInterval(async () => {
     const r = await api(`/api/ride/${currentRideId}`);
@@ -1203,7 +1336,6 @@ function showMatched(ride) {
     if (r.driverLocation) {
       const dl = [r.driverLocation.lat, r.driverLocation.lng];
       driverMarker.setPosition({ lat: dl[0], lng: dl[1] });
-      // Update route
       if (routeLine) {
         const ds = new google.maps.DirectionsService();
         ds.route({
@@ -1216,9 +1348,6 @@ function showMatched(ride) {
         const m = Math.round(r.distanceKm * 1000);
         document.getElementById('match-dist').textContent = m < 1000 ? `${m}m` : `${r.distanceKm.toFixed(1)}km`;
         document.getElementById('match-eta').textContent = r.etaMinutes || '--';
-        if (r.fareEstimateLBP) {
-          document.getElementById('match-fare').textContent = `${(r.fareEstimateLBP / 1000).toFixed(0)}k`;
-        }
         if (m < 100) {
           document.getElementById('arrived-msg').classList.add('show');
           document.getElementById('match-status').textContent = 'Arrived!';
@@ -1323,10 +1452,19 @@ async function checkForRequests() {
     document.getElementById('req-eta').textContent = data.pending.etaMinutes
       ? `${data.pending.etaMinutes} min` : '--';
 
-    // Fare
-    document.getElementById('req-fare').textContent = data.pending.fareEstimateLBP
-      ? `${(data.pending.fareEstimateLBP / 1000).toFixed(0)}k LBP`
-      : '--';
+    // Destination
+    const destRow = document.getElementById('req-dest-row');
+    const noDestRow = document.getElementById('req-nodest-row');
+    if (data.pending.destination) {
+      const d = data.pending.destination;
+      const txt = d.address || (d.lat ? `📍 Pin at ${d.lat.toFixed(3)}, ${d.lng.toFixed(3)}` : '');
+      document.getElementById('req-dest').textContent = txt;
+      destRow.style.display = 'block';
+      noDestRow.style.display = 'none';
+    } else {
+      destRow.style.display = 'none';
+      noDestRow.style.display = 'block';
+    }
 
     document.getElementById('request-popup').classList.add('show');
   }
