@@ -85,7 +85,6 @@ input:focus{border-color:rgba(255,140,66,0.4)}
     <div class="stat-card"><div class="stat-val green" id="s-online">—</div><div class="stat-label">Online Now</div></div>
     <div class="stat-card"><div class="stat-val amber" id="s-active">—</div><div class="stat-label">Active Rides</div></div>
     <div class="stat-card"><div class="stat-val" id="s-today">—</div><div class="stat-label">Today's Rides</div></div>
-    <div class="stat-card"><div class="stat-val amber" id="s-earn">—</div><div class="stat-label">Today LBP</div></div>
     <div class="stat-card"><div class="stat-val" id="s-total">—</div><div class="stat-label">Total Rides</div></div>
   </div>
 
@@ -169,7 +168,6 @@ async function loadAll(){
     document.getElementById('s-online').textContent=stats.onlineDrivers??'—';
     document.getElementById('s-active').textContent=stats.activeRides??'—';
     document.getElementById('s-today').textContent=stats.todayRides??'—';
-    document.getElementById('s-earn').textContent=stats.todayEarningsLBP?`${(stats.todayEarningsLBP/1000).toFixed(0)}k`:'0';
     document.getElementById('s-total').textContent=stats.totalRides??'—';
     document.getElementById('live-badge').textContent=`● ${stats.onlineDrivers||0} online`;
     document.getElementById('last-update').textContent='Updated '+new Date().toLocaleTimeString();
@@ -215,14 +213,14 @@ async function loadAll(){
     rl.innerHTML=rides.length===0?'<div class="empty">No rides yet</div>':
       rides.slice(0,15).map(r=>{
         const st=r.status||'pending';
-        const fare=r.fare_lbp?`${(r.fare_lbp/1000).toFixed(0)}k LBP · `:'';
         const type=(r.ride_type==='delivery')?'📦':'🧑';
+        const dest=r.dest_address?` → ${r.dest_address}`:(r.dest_lat?` → 📍`:'');
         return `<div class="ride-row">
           <div class="ride-head">
-            <span>${type} ${r.rider_name||'Rider'} → ${r.driver_name||'…'}</span>
+            <span>${type} ${r.rider_name||'Rider'} → ${r.driver_name||'…'}${dest}</span>
             <span class="rstat s-${st}">${st}</span>
           </div>
-          <div class="ride-meta">${fare}${timeAgo(r.created_at)}</div>
+          <div class="ride-meta">${timeAgo(r.created_at)}</div>
         </div>`;
       }).join('');
   }catch(e){console.error('loadAll failed',e);}
