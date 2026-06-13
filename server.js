@@ -22,7 +22,6 @@ const {
   SUPABASE_URL, SUPABASE_SERVICE_KEY,
   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_EMAIL = "mailto:admin@wasselni.app",
   MAX_DRIVERS_PER_RIDE = 5, MAX_RADIUS_KM = 5,
-  FARE_BASE_LBP = 100000, FARE_PER_KM_LBP = 100000,
   PORT = 3000, BASE_URL = "",
 } = process.env;
 
@@ -85,14 +84,16 @@ async function dbSaveDriver(driver) {
 
 async function dbSaveRide(ride) {
   if (!db) return;
-  await db.from("rides").upsert({
+  try { await db.from("rides").upsert({
     id: ride.id, rider_phone: ride.riderPhone, rider_name: ride.riderName,
     rider_lat: ride.riderLocation.lat, rider_lng: ride.riderLocation.lng,
+    dest_lat: ride.destination?.lat ?? null, dest_lng: ride.destination?.lng ?? null,
+    dest_address: ride.destination?.address ?? null,
     ride_type: ride.rideType || "ride", status: ride.status,
     driver_phone: ride.acceptedBy ?? null, driver_name: ride.driverName ?? null,
     driver_lat: ride.driverLocation?.lat ?? null, driver_lng: ride.driverLocation?.lng ?? null,
-    fare_lbp: ride.fareEstimateLBP ?? null, pinged_drivers: ride.pingedDrivers ?? [],
-  }, { onConflict: "id" });
+    pinged_drivers: ride.pingedDrivers ?? [],
+  }, { onConflict: "id" }); } catch {} 
 }
 
 async function dbLoadState() {
@@ -120,10 +121,11 @@ async function dbLoadState() {
       const ride = {
         id: r.id, riderPhone: r.rider_phone, riderName: r.rider_name,
         riderLocation: { lat: r.rider_lat, lng: r.rider_lng },
+        destination: r.dest_lat ? { lat: r.dest_lat, lng: r.dest_lng, address: r.dest_address } : null,
         rideType: r.ride_type, status: r.status,
         acceptedBy: r.driver_phone, driverName: r.driver_name,
         driverLocation: r.driver_lat ? { lat: r.driver_lat, lng: r.driver_lng } : null,
-        fareEstimateLBP: r.fare_lbp, pingedDrivers: r.pinged_drivers || [],
+        pingedDrivers: r.pinged_drivers || [],
         timer: null, lastUpdate: null,
       };
       rides.set(ride.id, ride);
@@ -333,16 +335,13 @@ app.get("/api/dashboard/stats", requireAdmin, async (req, res) => {
   const onlineDrivers = [...drivers.values()].filter(d => d.online);
   const activeRides = [...rides.values()].filter(r => r.status === "accepted");
   const pendingRides = [...rides.values()].filter(r => r.status === "pending");
-  let todayRides = 0, todayEarnings = 0, totalRides = 0;
+  let todayRides = 0, totalRides = 0;
   if (db) {
     try {
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const { data: todayData } = await db.from("rides")
-        .select("status, fare_lbp")
-        .gte("created_at", today.toISOString())
-        .eq("status", "completed");
-      todayRides = (todayData || []).length;
-      todayEarnings = (todayData || []).reduce((s, r) => s + (r.fare_lbp || 0), 0);
+      const { count: tc } = await db.from("rides").select("*", { count: "exact", head: true })
+        .gte("created_at", today.toISOString()).eq("status", "completed");
+      todayRides = tc || 0;
       const { count } = await db.from("rides").select("*", { count: "exact", head: true }).eq("status", "completed");
       totalRides = count || 0;
     } catch (e) { console.error("dashboard stats db error:", e.message); }
@@ -352,8 +351,6 @@ app.get("/api/dashboard/stats", requireAdmin, async (req, res) => {
     activeRides: activeRides.length,
     pendingRides: pendingRides.length,
     todayRides,
-    todayEarningsLBP: todayEarnings,
-    todayEarningsUSD: +(todayEarnings / 90000).toFixed(1),
     totalRides,
   });
 });
@@ -397,7 +394,7 @@ app.get("/api/dashboard/rides", requireAdmin, async (req, res) => {
     .slice(0, 30)
     .map(r => ({
       id: r.id, rider_name: r.riderName, driver_name: r.driverName,
-      status: r.status, ride_type: r.rideType, fare_lbp: r.fareEstimateLBP, created_at: null,
+      status: r.status, ride_type: r.rideType, created_at: null,
     }));
   res.json({ rides: recent });
 });
@@ -530,30 +527,40 @@ app.get("/api/nearby", (req, res) => {
 });
 
 app.post("/api/ride/request", async (req, res) => {
-  const { riderPhone, riderName, lat, lng, rideType } = req.body;
+  const { riderPhone, riderName, lat, lng, rideType, destination } = req.body;
   if (!riderPhone || !lat || !lng) return res.json({ error: "missing fields" });
   const nearby = findNearbyDrivers({ lat, lng }, [...drivers.values()], { maxKm: +MAX_RADIUS_KM, limit: +MAX_DRIVERS_PER_RIDE });
   if (nearby.length === 0) return res.json({ error: "no_drivers", message: `No tuk-tuks within ${MAX_RADIUS_KM}km` });
 
   const rideId = generateRideId();
-  const fare = Math.round((+FARE_BASE_LBP + distanceKm({ lat, lng }, nearby[0].location) * +FARE_PER_KM_LBP) / 1000) * 1000;
+  // Validate destination if supplied (object with lat/lng and optional address text)
+  let destClean = null;
+  if (destination && typeof destination === "object") {
+    if (destination.lat != null && destination.lng != null) {
+      destClean = { lat: +destination.lat, lng: +destination.lng, address: destination.address || null };
+    } else if (destination.address) {
+      destClean = { lat: null, lng: null, address: String(destination.address).slice(0, 200) };
+    }
+  }
   const ride = {
     id: rideId, riderPhone, riderName: riderName || "Rider", riderLocation: { lat, lng },
+    destination: destClean,
     rideType: rideType || "ride", status: "pending", pingedDrivers: nearby.map(d => d.phone),
     acceptedBy: null, driverName: null, driverLocation: null, lastUpdate: null,
-    fareEstimateLBP: fare, timer: null,
+    timer: null,
   };
   ride.timer = setTimeout(() => expireRide(rideId), RIDE_TIMEOUT_MS);
   rides.set(rideId, ride);
   for (const d of nearby) pendingOffers.set(d.phone, rideId);
   dbSaveRide(ride).catch(() => {});
 
-  // Send push notifications to drivers
+  // Push notifications
   for (const d of nearby) {
     const km = d.distanceKm.toFixed(1);
+    const typeLabel = (rideType === "delivery") ? "Delivery" : "Ride";
     await sendPush(d.phone, {
-      title: "🔔 New Ride Request!",
-      body: `${riderName || "Rider"} — ${km}km away. Tap to accept.`,
+      title: `🔔 New ${typeLabel} Request!`,
+      body: `${riderName || "Rider"} — ${km}km away. Open the app to view.`,
       rideId, type: "ride_request",
     });
   }
@@ -567,10 +574,9 @@ app.get("/api/ride/:rideId", (req, res) => {
   const result = {
     id: ride.id, status: ride.status, rideType: ride.rideType || "ride",
     riderName: ride.riderName, riderLocation: ride.riderLocation,
+    destination: ride.destination || null,
     driverName: ride.driverName, driverPhone: ride.acceptedBy,
     driverLocation: ride.driverLocation, lastUpdate: ride.lastUpdate,
-    fareEstimateLBP: ride.fareEstimateLBP,
-    fareEstimateUSD: ride.fareEstimateLBP ? +(ride.fareEstimateLBP / 90000).toFixed(1) : null,
   };
   if (ride.driverLocation && ride.riderLocation) {
     const dist = distanceKm(ride.riderLocation, ride.driverLocation);
@@ -588,14 +594,12 @@ app.get("/api/driver/:phone/requests", (req, res) => {
   if (!ride || ride.status !== "pending") { pendingOffers.delete(phone); return res.json({ pending: null }); }
   const driver = drivers.get(phone);
   const dist = driver?.location ? distanceKm(ride.riderLocation, driver.location) : null;
-  const fareLBP = dist ? Math.round((+FARE_BASE_LBP + dist * +FARE_PER_KM_LBP) / 1000) * 1000 : null;
   res.json({ pending: {
     rideId: ride.id, riderName: ride.riderName, riderLocation: ride.riderLocation,
+    destination: ride.destination || null,
     rideType: ride.rideType || "ride",
     distanceKm: dist ? +dist.toFixed(2) : null,
     etaMinutes: dist ? Math.max(2, Math.round((dist * 1.4) / 20 * 60)) : null,
-    fareEstimateLBP: fareLBP,
-    fareEstimateUSD: fareLBP ? +(fareLBP / 90000).toFixed(1) : null,
   }});
 });
 
@@ -710,12 +714,12 @@ async function handleLocation(from, name, loc, req) {
     return sendText(from, await polish(`No tuk-tuks available near you right now. Please try again in a few minutes.`, "No drivers found near rider"));
 
   const rideId = generateRideId();
-  const fare = Math.round((+FARE_BASE_LBP + distanceKm(loc, nearby[0].location) * +FARE_PER_KM_LBP) / 1000) * 1000;
   const ride = {
     id: rideId, riderPhone: from, riderName: name, riderLocation: loc,
+    destination: null,
     rideType: "ride", status: "pending", pingedDrivers: nearby.map(d => d.phone),
     acceptedBy: null, driverName: null, driverLocation: null, lastUpdate: null,
-    fareEstimateLBP: fare, timer: null,
+    timer: null,
   };
   ride.timer = setTimeout(() => expireRide(rideId), RIDE_TIMEOUT_MS);
   rides.set(rideId, ride);
